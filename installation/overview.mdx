@@ -1,0 +1,83 @@
+---
+title: "Installation overview: choose your platform and method"
+description: "Compare uv and pip installation methods for Kohya's GUI across Linux, Windows, and macOS, with system requirements and cloud alternatives."
+---
+
+Kohya's GUI can be installed locally using either the `uv` or `pip` method. Both produce the same end result — a running Gradio server with the full GUI — but they differ in how dependencies are resolved and environments are managed. Pick the combination that matches your operating system and tooling preference.
+
+## System requirements
+
+Before installing, confirm your system meets these baseline requirements:
+
+| Requirement | Minimum |
+|---|---|
+| GPU | NVIDIA GPU (VRAM needs vary by training method) |
+| CUDA | NVIDIA CUDA Toolkit 12.8 |
+| Python | 3.10.x or 3.11.x (below 3.12) |
+| Git | Any recent version |
+
+<Note>
+  macOS is only supported through the **pip method**. The `uv` scripts are not tested on macOS and CUDA is generally not required or compatible with Apple Silicon.
+</Note>
+
+## Installation method matrix
+
+| Platform | Recommended method | Guide |
+|---|---|---|
+| Linux | `uv` | [Linux — uv](/installation/linux-uv) |
+| Windows | `uv` | [Windows — uv](/installation/windows-uv) |
+| Linux / macOS | `pip` | [Linux / macOS — pip](/installation/pip-linux) |
+| Windows | `pip` | [Windows — pip](/installation/pip-windows) |
+
+## uv vs pip — what's the difference?
+
+Both methods install the same packages from `pyproject.toml`. The difference is in the tooling used to create and manage the virtual environment.
+
+| | `uv` | `pip` |
+|---|---|---|
+| Speed | Significantly faster dependency resolution | Standard speed |
+| Isolation | Managed automatically by the launch script | Standard `venv` |
+| Upgrades | Re-running the launch script is sufficient | Requires re-running `setup.sh` / `setup.bat` |
+| Debugging | Less familiar tooling for some users | Well-documented, IDE-friendly |
+| macOS support | Not recommended | Supported |
+
+<Tip>
+  If you are unsure which method to use, start with `uv`. If you run into problems, fall back to `pip` — both produce an identical running environment.
+</Tip>
+
+## Cloud and container alternatives
+
+If your local system does not meet the GPU requirements, or you want a browser-only setup, the following hosted options are available.
+
+<CardGroup cols={3}>
+  <Card title="Google Colab" icon="google" href="https://github.com/camenduru/kohya_ss-colab">
+    Free, browser-based training via a Colab notebook maintained by camenduru.
+  </Card>
+  <Card title="Runpod" icon="server" href="https://github.com/bmaltais/kohya_ss/blob/master/docs/runpod_setup.md">
+    On-demand GPU cloud with ready-made Kohya templates.
+  </Card>
+  <Card title="Docker" icon="docker" href="https://github.com/bmaltais/kohya_ss/blob/master/docs/docker.md">
+    Containerized setup for developers and sysadmins.
+  </Card>
+</CardGroup>
+
+<Warning>
+  The Colab notebook is maintained by camenduru, not the original Kohya's GUI author. Report Colab-specific issues on the camenduru repository.
+</Warning>
+
+## Choose your guide
+
+<CardGroup cols={2}>
+  <Card title="Linux — uv" icon="linux" href="/installation/linux-uv">
+    Recommended for Linux users. Fastest path to a running GUI.
+  </Card>
+  <Card title="Windows — uv" icon="windows" href="/installation/windows-uv">
+    Recommended for Windows users. Handles all dependencies automatically.
+  </Card>
+  <Card title="Linux / macOS — pip" icon="terminal" href="/installation/pip-linux">
+    Use this if you prefer pip, are on macOS, or need conda support.
+  </Card>
+  <Card title="Windows — pip" icon="windows" href="/installation/pip-windows">
+    Traditional pip setup for Windows when uv is not an option.
+  </Card>
+</CardGroup>

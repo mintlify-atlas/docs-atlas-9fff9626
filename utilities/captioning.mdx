@@ -1,0 +1,241 @@
+---
+title: "Image Captioning Tools: BLIP, WD14, GIT, and Manual"
+description: "Caption training images using BLIP, BLIP2, WD14 Tagger, GIT, or manual editing. Choose tags for anime datasets or natural language for photorealistic content."
+---
+
+Kohya's GUI bundles six captioning tools under the **Utilities → Captioning** tab. Each tool writes a sidecar text file next to every image in your dataset folder. Choosing the right captioner depends on whether you are training on photographic or anime-style content, and whether you prefer natural-language descriptions or comma-separated booru-style tags.
+
+<Note>
+All captioners write caption files to the same directory as the source images. The output file shares the image filename but uses the caption extension you select (`.txt`, `.caption`, or `.cap`). For example, `photo_001.jpg` produces `photo_001.txt`.
+</Note>
+
+## Caption file extensions
+
+| Extension | Notes |
+|-----------|-------|
+| `.txt` | Default. Recognised by all Kohya training scripts. |
+| `.caption` | Alternative; works with all training methods. |
+| `.cap` | Shorter alias; less commonly used. |
+
+Use the same extension across your entire dataset. Mixing extensions in one folder causes the training script to silently skip some images.
+
+---
+
+## Captioning tools
+
+<Tabs>
+  <Tab title="Basic Captioning">
+
+    **Basic Captioning** writes a single, user-supplied text string to every image in a folder. Use it to stamp a trigger word or shared description across an entire concept folder, or to run a find-and-replace pass on existing caption files.
+
+    | Field | Description |
+    |-------|-------------|
+    | **Image folder** | Directory containing the images to caption. |
+    | **Caption file extension** | `.txt`, `.caption`, or `.cap`. |
+    | **Overwrite existing captions** | When enabled, existing files are replaced. Required for prefix/postfix and find-replace to take effect. |
+    | **Prefix** | Text prepended to the caption. |
+    | **Caption text** | The main caption body. Leave empty to only apply a prefix or postfix. |
+    | **Postfix** | Text appended to the caption. |
+    | **Find text** | String to search for in existing caption files. |
+    | **Replacement text** | String to replace found text with. Leave empty to delete the matched string. |
+
+    <Tip>
+    Basic Captioning is the fastest way to add a trigger token to every image. Fill in only **Prefix** (e.g., `my_trigger_word, `) and leave **Caption text** empty to prepend without overwriting the rest of an existing caption.
+    </Tip>
+
+  </Tab>
+  <Tab title="BLIP Captioning">
+
+    **BLIP Captioning** uses Salesforce's BLIP model (`model_large_caption.pth`, downloaded automatically on first run) to generate natural-language descriptions for each image.
+
+    | Field | Default | Description |
+    |-------|---------|-------------|
+    | **Image folder** | — | Directory containing the images to caption. |
+    | **Caption file extension** | `.txt` | Output file extension. |
+    | **Prefix** | *(empty)* | Text prepended to every generated caption. |
+    | **Postfix** | *(empty)* | Text appended to every generated caption. |
+    | **Batch size** | `1` | Number of images processed per batch. Increase for faster throughput on large datasets. |
+    | **Use beam search** | `true` | Enables beam search decoding for higher-quality captions. |
+    | **Number of beams** | `1` | Beam count when beam search is active. |
+    | **Top p** | `0.9` | Nucleus sampling probability. Used when beam search is disabled. |
+    | **Max length** | `75` | Maximum token length of the generated caption. |
+    | **Min length** | `5` | Minimum token length of the generated caption. |
+
+    <Steps>
+      <Step title="Select your image folder">
+        Choose the directory that contains the images you want to caption.
+      </Step>
+      <Step title="Set the caption extension">
+        Pick `.txt` unless you have a specific reason to use another extension.
+      </Step>
+      <Step title="Tune generation parameters">
+        For most datasets the defaults work well. Raise **Max length** if captions are being cut off mid-sentence.
+      </Step>
+      <Step title="Add a prefix (optional)">
+        If you are training with a trigger word, add it as a **Prefix** so every caption begins with it.
+      </Step>
+      <Step title="Click Caption images">
+        The script runs `sd-scripts/finetune/make_captions.py` and writes one caption file per image.
+      </Step>
+    </Steps>
+
+  </Tab>
+  <Tab title="BLIP2 Captioning">
+
+    **BLIP2 Captioning** uses `Salesforce/blip2-opt-2.7b` from Hugging Face. It loads the model at runtime (requires a GPU for reasonable speed) and supports two generation strategies.
+
+    **Common settings**
+
+    | Field | Default | Description |
+    |-------|---------|-------------|
+    | **Image folder** | — | Directory of images to caption. |
+    | **Caption file extension** | `.txt` | Output extension. |
+    | **Min new tokens** | `20` | Minimum tokens to generate (5–300). |
+    | **Max new tokens** | `40` | Maximum tokens to generate (5–300). |
+
+    **Beam search tab**
+
+    | Field | Default | Description |
+    |-------|---------|-------------|
+    | **Number of beams** | `16` | Beam count for beam search decoding (1–16). |
+    | **Length penalty** | `1.0` | Values > 1 favour longer sequences; values < 1 favour shorter ones. |
+    | **Repeat penalty** | `1.5` | Larger values reduce repetition in the output. |
+
+    **Nucleus sampling tab**
+
+    | Field | Default | Description |
+    |-------|---------|-------------|
+    | **Sample** | `true` | Enable nucleus (top-p) sampling. |
+    | **Temperature** | `1.0` | Controls randomness; lower values are more deterministic (0.5–1.0). |
+    | **Top p** | `0.9` | Cumulative probability cutoff for nucleus sampling (0–1). |
+
+    <Note>
+    BLIP2 does not accept a prefix/postfix field. Append a trigger word to your captions using the **Basic Captioning** tool's find-and-replace after running BLIP2.
+    </Note>
+
+  </Tab>
+  <Tab title="WD14 Tagger">
+
+    **WD14 Tagger** produces comma-separated booru-style tags (e.g., `1girl, solo, long hair, white dress`) rather than sentence captions. It is the standard choice for anime and illustration datasets.
+
+    The tagger downloads its model from Hugging Face automatically on first use, storing it under `./wd14_tagger_model/`.
+
+    **Model selection**
+
+    | Repo ID | Notes |
+    |---------|-------|
+    | `SmilingWolf/wd-v1-4-convnextv2-tagger-v2` | Default; good balance of speed and accuracy. |
+    | `SmilingWolf/wd-v1-4-convnext-tagger-v2` | Slightly lighter alternative. |
+    | `SmilingWolf/wd-v1-4-vit-tagger-v2` | ViT-based; comparable accuracy. |
+    | `SmilingWolf/wd-v1-4-swinv2-tagger-v2` | Swin Transformer v2 variant. |
+    | `SmilingWolf/wd-v1-4-moat-tagger-v2` | MOAT architecture variant. |
+    | `SmilingWolf/wd-swinv2-tagger-v3` | v3; ONNX is forced on automatically. |
+    | `SmilingWolf/wd-vit-tagger-v3` | v3 ViT; ONNX forced on. |
+    | `SmilingWolf/wd-convnext-tagger-v3` | v3 ConvNeXt; ONNX forced on. |
+
+    <Note>
+    For v3 models, the **Use ONNX** checkbox is locked to enabled because v3 weights are distributed in ONNX format only.
+    </Note>
+
+    **Key parameters**
+
+    | Field | Default | Description |
+    |-------|---------|-------------|
+    | **Caption file extension** | `.txt` | Output extension. |
+    | **Caption separator** | `, ` | Delimiter placed between tags. |
+    | **Threshold** | `0.35` | Global confidence cutoff. Tags below this score are discarded. |
+    | **General threshold** | `0.35` | Confidence cutoff for general tags specifically. |
+    | **Character threshold** | `0.35` | Confidence cutoff for character-name tags. |
+    | **Batch size** | `1` | Images processed per batch. |
+    | **Max dataloader workers** | `2` | Parallel workers for the image loader. |
+    | **Undesired tags** | *(empty)* | Comma-separated list of tags to remove from output (e.g., `1girl,solo`). |
+    | **Prefix to add** | *(empty)* | Tags always placed at the beginning of the output (comma-separated). |
+    | **Append TAGs** | `false` | Appends generated tags to existing caption files instead of replacing them. |
+    | **Use rating tags** | `false` | Includes a content-rating tag (`safe`, `questionable`, etc.) as the first tag. |
+    | **Use rating tags as last tag** | `false` | Places the rating tag at the end instead. |
+    | **Character tag expand** | `false` | Splits `chara_name_(series)` into `chara_name, series`. |
+    | **Remove underscore** | `true` | Replaces underscores with spaces in tag output. |
+    | **Recursive** | `false` | Tags images in subfolders as well. |
+    | **Tag replacement** | *(empty)* | Remap tags using `source,target;source2,target2` syntax. |
+    | **Force model re-download** | `false` | Forces the model to re-download; useful when switching to ONNX. |
+    | **Use ONNX** | `true` | Runs inference via ONNX Runtime (faster on CPU, required for v3 models). |
+
+    <Steps>
+      <Step title="Pick a repo ID">
+        For most anime datasets, the default `wd-v1-4-convnextv2-tagger-v2` is a reliable starting point.
+      </Step>
+      <Step title="Set thresholds">
+        Start at `0.35`. Lower the threshold to include more tags; raise it to prune noisy low-confidence tags.
+      </Step>
+      <Step title="List undesired tags">
+        Add tags you never want in your captions to **Undesired tags**, for example `text, watermark, signature`.
+      </Step>
+      <Step title="Run the tagger">
+        Click **Caption images**. The model is downloaded if not already cached. Progress is logged to the console.
+      </Step>
+    </Steps>
+
+  </Tab>
+  <Tab title="GIT Captioning">
+
+    **GIT Captioning** uses Microsoft's Generative Image-to-Text (GIT) model to produce natural-language captions. By default it uses the base GIT model; you can point it at any compatible Hugging Face model ID.
+
+    | Field | Default | Description |
+    |-------|---------|-------------|
+    | **Image folder** | — | Directory containing the images to caption. |
+    | **Caption file extension** | `.txt` | Output extension. |
+    | **Prefix** | *(empty)* | Text prepended to every generated caption. |
+    | **Postfix** | *(empty)* | Text appended to every generated caption. |
+    | **Batch size** | `1` | Images per batch. |
+    | **Number of workers** | `2` | Parallel data loader workers. |
+    | **Max length** | `75` | Maximum token length of generated captions. |
+    | **Model** | *(empty)* | Optional Hugging Face model ID to override the default GIT model. |
+
+  </Tab>
+  <Tab title="Manual Captioning">
+
+    **Manual Captioning** lets you view, write, and edit captions directly in the GUI, five images at a time. It is useful for reviewing and correcting captions produced by automated tools or for hand-labelling a small dataset.
+
+    **Features**
+
+    - **Quick Tags**: enter a comma-separated list of tags that appear as checkboxes beside each image. Checking or unchecking a tag instantly updates the caption text.
+    - **Autosave**: when enabled, every edit is written to disk immediately. Disable it if you want to review changes before committing; a save button appears per image when autosave is off.
+    - **Import**: scans all existing caption files in the folder and loads every tag under the configured word-count limit into the Quick Tags box.
+    - **Pagination**: navigate through your dataset with **Prev** and **Next** buttons or jump directly to a page number.
+
+    <Steps>
+      <Step title="Select your image folder and extension">
+        Choose the folder and the caption extension that matches your existing files (or the extension you want to create).
+      </Step>
+      <Step title="Click Load">
+        The tool scans the folder and sets up pagination based on the total image count.
+      </Step>
+      <Step title="Optionally import existing tags">
+        Click **Import** to populate Quick Tags from your existing caption files. Use the **Ignore Imported Tags Above Word Count** slider (default `3`) to filter out long phrases.
+      </Step>
+      <Step title="Caption each image">
+        Edit the **Captions** text area directly, or check and uncheck Quick Tags. With autosave on, every change is written immediately.
+      </Step>
+    </Steps>
+
+  </Tab>
+</Tabs>
+
+---
+
+## When to use tags vs. natural language
+
+<AccordionGroup>
+  <Accordion title="Use WD14 tags for anime and illustration datasets">
+    Anime-focused base models (NovelAI, anything-v3, etc.) were trained on booru-tagged data. Using WD14 to produce the same tag vocabulary keeps your LoRA captions semantically compatible with the base model's token embeddings, which usually gives sharper results for character and style LoRAs.
+  </Accordion>
+  <Accordion title="Use natural language for photorealistic datasets">
+    Photorealistic base models (SD 1.5, SDXL, etc.) were trained on LAION captions — natural sentences. BLIP, BLIP2, and GIT produce sentence-form captions that align with those embeddings. This typically leads to better prompt-following for object, person, and scene LoRAs.
+  </Accordion>
+  <Accordion title="Mixing captions and trigger words">
+    Regardless of the captioner you choose, you can prefix every caption with a unique trigger token (e.g., `ohwx person, `) using the **Prefix** field in BLIP or GIT, or the **Prefix to add** field in WD14. This lets you activate the concept during inference without editing every caption file manually.
+  </Accordion>
+  <Accordion title="Reviewing generated captions">
+    After running any automated captioner, open **Manual Captioning** to spot-check a sample of images. Automated models can hallucinate details, mis-tag backgrounds as foreground subjects, or produce repetitive phrasing. Correcting a handful of bad captions often noticeably improves training quality.
+  </Accordion>
+</AccordionGroup>

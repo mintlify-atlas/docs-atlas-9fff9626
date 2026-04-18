@@ -1,0 +1,200 @@
+---
+title: "LoRA Training Guide: Low-Rank Adaptation for SD Models"
+description: "Train LoRA models with Kohya's GUI. Covers LoRA types, network rank, alpha, training targets, SDXL guidelines, and using trained models in auto1111."
+---
+
+LoRA (Low-Rank Adaptation) is the most common training method in Kohya's GUI. Rather than modifying the base model's weights directly, LoRA adds small neural networks — one per target layer — that sit alongside the original weights during inference. Because only these small adapters are saved, a finished LoRA is typically 4–200 MB rather than the 2–5 GB of a full checkpoint, making it easy to share and combine.
+
+The underlying script is `train_network.py`. Once training finishes you can load the `.safetensors` file in AUTOMATIC1111 (via the built-in LoRA tab or the [additional-networks extension](https://github.com/kohya-ss/sd-webui-additional-networks)) or any other SD frontend that supports LoRA.
+
+## LoRA Types
+
+<AccordionGroup>
+  <Accordion title="Standard LoRA">
+    The default type. Adds low-rank matrices to the attention layers in U-Net and, optionally, the text encoder. Best starting point — use this unless you have a specific reason to switch.
+  </Accordion>
+
+  <Accordion title="DyLoRA">
+    Trains multiple ranks below the specified network rank simultaneously. Convenient when you want to test different rank sizes without running separate training jobs, because you can truncate the saved LoRA to a smaller rank at inference time.
+  </Accordion>
+
+  <Accordion title="LoHa (Hadamard Product)">
+    A more parameter-efficient variant that uses the Hadamard product to combine two low-rank matrices instead of a single factorisation. Can achieve similar quality with a smaller file size.
+  </Accordion>
+
+  <Accordion title="LoCon (LoRA for Convolutions)">
+    Extends LoRA training to the convolutional (Res) blocks in U-Net in addition to the attention layers. This adds more learning targets and can improve accuracy, especially for styles that involve textures.
+  </Accordion>
+
+  <Accordion title="LyCORIS Presets">
+    When the LoRA type is set to **LyCORIS**, a preset dropdown selects which layers are targeted. The available presets (from `LYCORIS_PRESETS_CHOICES` in `lora_gui.py`) are:
+
+    | Preset | Layers targeted |
+    |--------|----------------|
+    | `attn-mlp` | Attention and MLP layers |
+    | `attn-only` | Attention layers only |
+    | `full` | All layers |
+    | `full-lin` | All linear layers |
+    | `unet-transformer-only` | U-Net transformer blocks |
+    | `unet-convblock-only` | U-Net convolutional blocks |
+  </Accordion>
+</AccordionGroup>
+
+## Key Parameters
+
+<AccordionGroup>
+  <Accordion title="Network Rank (Dimension)">
+    Controls the number of neurons in the hidden layer of each small neural network. A higher rank stores more information but increases file size and the risk of overfitting.
+
+    - Start between **4–16** for quick experiments.
+    - Common production values: **32** or **64**.
+    - Hard cap recommended at **128**; beyond that, gains are marginal.
+
+    Default: `8`
+  </Accordion>
+
+  <Accordion title="Network Alpha">
+    A scaling factor that prevents saved weights from collapsing to zero. The effective learning strength is `Network Alpha / Network Rank` (a value between 0 and 1).
+
+    - Setting Alpha equal to Rank disables the scaling effect.
+    - Alpha must not exceed Rank — exceeding it produces unintended LoRA behaviour.
+    - Lower Alpha values increase the magnitude of stored weights and can rescue poorly-converging runs.
+
+    Default: `1`
+  </Accordion>
+
+  <Accordion title="LoRA Network Weights (resume)">
+    Path to an existing LoRA file to use as the starting point for additional training. The specified file is read-only — the new LoRA is saved separately.
+
+    Enable **DIM from weights** to automatically inherit the rank from the loaded file, overriding the Network Rank field.
+  </Accordion>
+
+  <Accordion title="Stop Text Encoder Training">
+    A percentage value (0–100). Once training reaches this percentage of total steps, the text encoder stops updating while U-Net continues. Setting this to 80, for example, stops text encoder training at 80% of total steps.
+
+    Useful for preventing overfitting in the text encoder, which affects all attention blocks simultaneously.
+  </Accordion>
+
+  <Accordion title="Learning Rate">
+    Separate rates can be set for **U-Net** (default `1e-4`) and the **Text Encoder** (default `5e-5`). The text encoder rate is typically lower because changes there propagate globally through the model.
+
+    When using Adafactor with `relative_step=False`, set both rates explicitly (see the SDXL section below).
+  </Accordion>
+</AccordionGroup>
+
+## Training Targets
+
+LoRA can update two distinct parts of the model:
+
+**U-Net** — The image-generation backbone. Divided into Down (12 blocks), Mid (1 block), and Up (12 blocks) — 25 blocks total. Standard LoRA attaches adapters to the attention (cross-attention and self-attention) blocks inside U-Net. LoCon also targets the convolutional Res blocks.
+
+**Text Encoder** — Converts text prompts into numeric vectors that U-Net's cross-attention layers read. There is one shared text encoder in SD 1.x; SDXL has two (CLIP-L and OpenCLIP-G). Because the text encoder is shared across all attention blocks, changes there have a large and broad effect. Training it is optional — use `--network_train_unet_only` to skip it.
+
+## Training Workflow
+
+<Steps>
+  <Step title="Select the base model">
+    In the **Source model** section, choose a `.ckpt` or `.safetensors` checkpoint, a local Diffusers directory, or a Hugging Face model ID (e.g. `runwayml/stable-diffusion-v1-5`).
+
+    Enable **SDXL** if you are training from an SDXL checkpoint; enable **Flux.1** for Flux models.
+  </Step>
+
+  <Step title="Prepare and configure the dataset">
+    Place your training images in a folder. You can use either the DreamBooth class+identifier naming convention, per-image `.caption` / `.txt` files, or a pre-built metadata `.json` file.
+
+    Point **Image folder** at the parent directory. Set **num_repeats** in the dataset `.toml` to control how many times images are seen per epoch.
+
+    Example dataset `.toml` for LoRA:
+
+    ```toml
+    [general]
+    enable_bucket = true
+
+    [[datasets]]
+    resolution = 512
+    batch_size = 2
+
+      [[datasets.subsets]]
+      image_dir = '/path/to/images'
+      caption_extension = '.txt'
+      num_repeats = 10
+    ```
+  </Step>
+
+  <Step title="Set network parameters">
+    Under **Network settings**, choose the **LoRA type** and set **Network Rank** and **Network Alpha**. For a first run, `rank=16, alpha=8` is a reasonable baseline.
+  </Step>
+
+  <Step title="Configure the optimizer and learning rate">
+    The default **AdamW8bit** optimizer works well for most SD 1.x LoRA training. For SDXL, Adafactor is recommended (see the SDXL guidelines below).
+  </Step>
+
+  <Step title="Set output paths and start training">
+    Fill in **Output folder** and **Output name**, then click **Start training**. The GUI generates and runs the `accelerate launch train_network.py ...` command automatically.
+
+    Monitor progress in the training log panel. Enable **Sample images** to generate preview images at set intervals.
+  </Step>
+</Steps>
+
+## SDXL LoRA Guidelines
+
+SDXL uses a larger U-Net and **two text encoders** (CLIP-L and OpenCLIP-G). Training both text encoders simultaneously can produce unexpected results, so the following settings are strongly recommended.
+
+<Note>
+  From `docs/LoRA/top_level.md`: set **Max resolution** to at least `1024,1024`, use a GPU with at least 12 GB VRAM, and pass `--network_train_unet_only` to skip both text encoders.
+</Note>
+
+<Tip>
+  PyTorch 2 uses measurably less GPU memory than PyTorch 1 for the same SDXL training configuration.
+</Tip>
+
+**Recommended Adafactor config for SDXL (fixed learning rate):**
+
+```toml
+optimizer_type = "adafactor"
+optimizer_args = [ "scale_parameter=False", "relative_step=False", "warmup_init=False" ]
+lr_scheduler = "constant_with_warmup"
+lr_warmup_steps = 100
+learning_rate = 4e-7   # standard learning rate for SDXL
+```
+
+Paste this into the **Optimizer extra arguments** field or supply it via a training config file.
+
+## Using a Trained LoRA in AUTOMATIC1111
+
+Once training finishes, copy the output `.safetensors` file to your auto1111 `models/Lora/` directory. Then:
+
+1. Open the **LoRA** tab in the generation panel (or use the additional-networks extension).
+2. Select your LoRA and set a weight (e.g. `0.7`–`1.0`).
+3. Reference the LoRA in the prompt using `<lora:your_lora_name:weight>` syntax.
+
+<Warning>
+  If you trained with `--network_train_unet_only` (recommended for SDXL), the LoRA only modifies U-Net. Loading it at a very high weight (above 1.0) can destabilise generation. Start at 0.75 and adjust.
+</Warning>
+
+## Sample Prompt File
+
+During training you can generate preview images by pointing **Sample prompts** at a `.txt` file. Each non-comment line is one prompt; options are appended with `--` flags:
+
+```txt
+# preview during training
+masterpiece, best quality, 1girl, in white shirts, upper body --n low quality, worst quality --w 768 --h 768 --d 1 --l 7.5 --s 28
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--n` | Negative prompt |
+| `--w` | Image width |
+| `--h` | Image height |
+| `--d` | Seed |
+| `--l` | CFG scale |
+| `--s` | Steps |
+
+<CardGroup cols={2}>
+  <Card title="SDXL Training" href="/training/sdxl">
+    SDXL-specific memory and configuration guidance
+  </Card>
+  <Card title="Flux.1 & SD3" href="/training/flux1-sd3">
+    Training on Flux.1 and Stable Diffusion 3
+  </Card>
+</CardGroup>

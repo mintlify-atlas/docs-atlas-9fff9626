@@ -1,0 +1,119 @@
+---
+title: 'Generate Sample Images During Training to Monitor Progress'
+description: 'Generate preview images at set step or epoch intervals to visually monitor training progress, catch overfitting early, and compare model quality over time.'
+---
+
+Sample image generation lets you see how the model is evolving without waiting for training to finish. At each configured interval, Kohya runs inference with your prompt file and saves the output images alongside the training checkpoints. Comparing these samples across steps or epochs is the most direct way to detect overfitting, underfitting, or drift before committing to a full training run.
+
+## Configuring sample generation in the GUI
+
+The sample controls are located in the **Samples** section within the training tabs. Four settings govern when and how samples are produced.
+
+<AccordionGroup>
+  <Accordion title="Sample every N steps">
+    Generate a sample image every N training steps. Set to `0` to disable step-based sampling. If both step-based and epoch-based sampling are configured, epoch-based sampling takes precedence.
+  </Accordion>
+  <Accordion title="Sample every N epochs">
+    Generate a sample image after every N completed epochs. This is the most common setting — for example, set to `1` to get a sample at the end of each epoch.
+  </Accordion>
+  <Accordion title="Sample sampler">
+    The sampler (scheduler) used for inference during sampling. Default is `euler_a`. Available options:
+
+    - `ddim`
+    - `pndm`
+    - `heun`
+    - `dpmsolver`
+    - `dpmsolver++`
+    - `dpmsingle`
+    - `k_lms`
+    - `k_euler`
+    - `k_euler_a` (alias: `euler_a`)
+    - `k_dpm_2`
+    - `k_dpm_2_a`
+  </Accordion>
+  <Accordion title="Sample prompts">
+    A text area where you enter your prompt file content directly. You can also set a default value for this field via `config.toml` using the `[samples]` section. See [config.toml defaults](#configtoml-defaults) below.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Setting both step and epoch intervals is allowed. When both are set, epoch-based sampling takes precedence over step-based sampling.
+</Note>
+
+---
+
+## Prompt file format
+
+Each line in the sample prompts text area represents one generation. Lines starting with `#` are treated as comments and are ignored.
+
+After the main prompt text, append inline options using `--` flags to control the output image properties on a per-prompt basis:
+
+| Option | Description |
+|--------|-------------|
+| `--n`  | Negative prompt — everything after `--n` until the next `--` flag is treated as the negative prompt |
+| `--w`  | Width of the generated image in pixels |
+| `--h`  | Height of the generated image in pixels |
+| `--d`  | Seed for the generated image (integer) |
+| `--l`  | CFG scale (classifier-free guidance scale) |
+| `--s`  | Number of diffusion steps |
+
+Prompt weighting using `( )` and `[ ]` notation is supported, matching the syntax used in Automatic1111's WebUI. Nesting is allowed.
+
+### Example prompt file
+
+```text
+# prompt 1
+masterpiece, best quality, (1girl), in white shirts, upper body, looking at viewer, simple background --n low quality, worst quality, bad anatomy, bad composition, poor, low effort --w 768 --h 768 --d 1 --l 7.5 --s 28
+
+# prompt 2
+masterpiece, best quality, 1boy, in business suit, standing at street, looking back --n (low quality, worst quality), bad anatomy, bad composition, poor, low effort --w 576 --h 832 --d 2 --l 5.5 --s 40
+```
+
+Each non-comment line generates one image per sampling interval. You can include as many prompts as you like — one image is produced per prompt per sample event.
+
+<Tip>
+  Fix your seed (`--d`) so that the same prompt always produces images from the same noise starting point. This makes it easy to see how the model changes between checkpoints without noise randomness obscuring the comparison.
+</Tip>
+
+---
+
+## Writing effective sample prompts
+
+Use prompts that reflect what you are training:
+
+- **DreamBooth / LoRA**: Include your identifier token and class in the sample prompt (e.g., `sls dog sitting in a park`). This directly tests whether the model has learned the association.
+- **Style training**: Use prompts that represent the style you're targeting (e.g., `anime landscape, detailed background, sunset`).
+- **Multiple prompts**: Include one simple prompt and one complex prompt to check generalisation at different levels of conditioning.
+
+---
+
+## Where sample images are saved
+
+Sample images are written to the same directory as your training output (`output_dir`), inside a subfolder named `sample`. The filename includes the step or epoch number, making it easy to sort them chronologically.
+
+```text
+outputs/
+├── my_lora-000001.safetensors
+├── my_lora-000002.safetensors
+└── sample/
+    ├── my_lora-000001-001-masterpiece.png
+    └── my_lora-000002-001-masterpiece.png
+```
+
+---
+
+## config.toml defaults
+
+You can pre-fill the sample settings using the `[samples]` section in `config.toml`:
+
+```toml
+[samples]
+sample_every_n_steps = 0    # 0 = disabled; set to e.g. 200 to sample every 200 steps
+sample_every_n_epochs = 1   # Sample at the end of every epoch
+sample_sampler = "euler_a"  # Sampler to use for inference
+sample_prompts = ""         # Paste your prompt file content here as a multi-line string
+```
+
+<Warning>
+  TOML multi-line strings require triple-quote syntax. Paste your full prompt block between `"""` delimiters if you want to store prompts in `config.toml`. For complex prompt files it is usually easier to enter them directly in the GUI text area each session.
+</Warning>

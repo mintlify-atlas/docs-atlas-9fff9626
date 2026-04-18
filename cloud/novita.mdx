@@ -1,0 +1,49 @@
+---
+title: "Run Kohya's GUI on Novita AI for Cloud GPU Training"
+description: "Deploy Kohya's GUI on Novita AI GPU cloud using a one-click template. Access the web interface on port 7860 without local GPU hardware."
+---
+
+Novita AI is a GPU cloud platform designed for AI workloads, offering on-demand NVIDIA GPU instances at competitive prices. It provides a template marketplace that makes deploying popular AI tools — including Kohya's GUI — a one-click operation. You do not need to install dependencies or write any configuration files; the template handles everything for you.
+
+## Pre-built template
+
+<Steps>
+  <Step title="Open the Novita template">
+    Navigate to the official Kohya's GUI template on the Novita console:
+
+    ```
+    https://novita.ai/gpus-console?templateId=312
+    ```
+  </Step>
+  <Step title="Deploy the template">
+    Select a GPU host that meets your training requirements and click **Deploy**. Wait for the instance status to show as running.
+  </Step>
+  <Step title="Access the GUI">
+    Once the instance is running, connect to it on **HTTP 7860** to open the Kohya's GUI web interface. The Novita console shows a link or proxy URL you can click directly.
+  </Step>
+</Steps>
+
+<Note>
+  The GUI listens on port 7860 by default. Make sure the Novita instance's network settings expose this port, or use the console's built-in port proxy to reach it.
+</Note>
+
+## Tips for using Kohya's GUI on Novita
+
+<Tip>
+  Save your trained checkpoints and LoRA files to persistent storage or download them before stopping the instance. Ephemeral storage is lost when the instance is terminated.
+</Tip>
+
+<Warning>
+  Novita instances are billed while running, even if a training job is not active. Stop or terminate the instance when you are done training to avoid unexpected charges.
+</Warning>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="RunPod setup" icon="server" href="/cloud/runpod">
+    Another GPU cloud option with a pre-built Kohya's GUI template.
+  </Card>
+  <Card title="Docker deployment" icon="docker" href="/cloud/docker">
+    Run Kohya's GUI locally or on any Linux host using Docker.
+  </Card>
+</CardGroup>

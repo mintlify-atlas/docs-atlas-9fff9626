@@ -1,0 +1,144 @@
+---
+title: "Install Kohya's GUI on Windows with pip (traditional)"
+description: "Install Kohya's GUI on Windows using pip and setup.bat. Covers Python setup, CUDA, clone with submodules, conda option, and upgrading."
+---
+
+The pip method uses a standard Python virtual environment managed by `pip`. Use this approach when the `uv` method is unavailable on your system, when you prefer the traditional toolchain, or when you need conda support. Both `setup.bat` and conda-based setup are covered below.
+
+## Prerequisites
+
+Install all of the following before cloning the repository:
+
+- **Python 3.10.11** (or [Python 3.11.9](https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe)) — enable **"Add to PATH"** during setup
+- [Git for Windows](https://git-scm.com/download/win)
+- [NVIDIA CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive?target_os=Windows&target_arch=x86_64)
+- **NVIDIA GPU** — VRAM requirements vary by training method and model size
+- *(Optional)* [Visual Studio Redistributables](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+- *(Optional)* **NVIDIA cuDNN** — improves training throughput and allows larger batch sizes
+
+## Installation
+
+<Steps>
+  <Step title="Install Python">
+    Download [python-3.11.9-amd64.exe](https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe) and run the installer.
+
+    <Warning>
+      Check the **"Add Python to PATH"** box on the first screen of the installer. Without it the batch scripts will not find Python.
+    </Warning>
+  </Step>
+
+  <Step title="Install CUDA 12.8 Toolkit">
+    Download and run the installer from the [NVIDIA CUDA 12.8 archive](https://developer.nvidia.com/cuda-12-8-0-download-archive?target_os=Windows&target_arch=x86_64).
+  </Step>
+
+  <Step title="Install Git for Windows">
+    Download from [git-scm.com/download/win](https://git-scm.com/download/win) and install with default options.
+  </Step>
+
+  <Step title="Install Visual Studio Redistributables">
+    Download and run [vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe). This prevents missing DLL errors at runtime.
+  </Step>
+
+  <Step title="Clone the repository">
+    Open a Command Prompt or PowerShell window and run:
+
+    ```cmd
+    git clone --recursive https://github.com/bmaltais/kohya_ss.git
+    cd kohya_ss
+    ```
+
+    The `--recursive` flag ensures all required Git submodules are fetched.
+  </Step>
+
+  <Step title="Run the setup script">
+    ```cmd
+    setup.bat
+    ```
+
+    If you have multiple Python versions installed and need to target Python 3.10 specifically:
+
+    ```cmd
+    setup-3.10.bat
+    ```
+
+    During the Accelerate configuration step, accept the default values unless you know your hardware requires otherwise. The amount of VRAM on your GPU does **not** affect these values.
+
+    <Tip>
+      To install the optional cuDNN files for improved training speed on NVIDIA 30x0/40x0 GPUs, run `setup.bat` and select option **2 — (Optional) Install cudnn files**. This allows larger batch sizes and faster iteration.
+    </Tip>
+  </Step>
+
+  <Step title="Launch the GUI">
+    <CodeGroup>
+    ```powershell PowerShell
+    gui.ps1 --listen 127.0.0.1 --server_port 7860 --inbrowser --share
+    ```
+
+    ```cmd Command Prompt
+    gui.bat --listen 127.0.0.1 --server_port 7860 --inbrowser --share
+    ```
+    </CodeGroup>
+
+    You can also invoke `kohya_gui.py` directly with the same flags.
+  </Step>
+</Steps>
+
+## Using conda instead of venv
+
+If you prefer Conda, create and activate an environment before running the scripts:
+
+```powershell
+conda create -n kohyass python=3.10
+conda activate kohyass
+
+setup.bat
+```
+
+Then launch with:
+
+```powershell
+gui.ps1
+```
+
+or:
+
+```cmd
+gui.bat
+```
+
+## Available CLI options
+
+All flags accepted by `gui.bat` / `gui.ps1` (and `kohya_gui.py` directly):
+
+```text
+  --help                show this help message and exit
+  --config CONFIG       Path to the toml config file for interface defaults
+  --debug               Debug on
+  --listen LISTEN       IP to listen on for connections to Gradio
+  --username USERNAME   Username for authentication
+  --password PASSWORD   Password for authentication
+  --server_port SERVER_PORT
+                        Port to run the server listener on
+  --inbrowser           Open in browser
+  --share               Share the gradio UI
+  --headless            Is the server headless
+  --language LANGUAGE   Set custom language
+  --use-ipex            Use IPEX environment
+  --use-rocm            Use ROCm environment
+  --do_not_use_shell    Enforce not to use shell=True when running external commands
+  --do_not_share        Do not share the gradio UI
+  --requirements REQUIREMENTS
+                        requirements file to use for validation
+  --root_path ROOT_PATH
+                        `root_path` for Gradio to enable reverse proxy support. e.g. /kohya_ss
+  --noverify            Disable requirements verification
+```
+
+## Upgrading
+
+Pull the latest code and re-run the setup script to update the environment:
+
+```cmd
+git pull
+setup.bat
+```

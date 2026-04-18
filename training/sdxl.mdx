@@ -1,0 +1,131 @@
+---
+title: "SDXL Training Configuration and Best Practices Guide"
+description: "SDXL training guidance for Kohya's GUI: dual text encoders, 1024px resolution, 12 GB+ VRAM, Adafactor optimizer config, and unet-only LoRA recommendations."
+---
+
+Stable Diffusion XL (SDXL) is a significantly larger model than SD 1.x and SD 2.x, with a more complex U-Net and **two text encoders** (CLIP-L and OpenCLIP-G). Training it — whether via LoRA, DreamBooth, or fine-tuning — requires more VRAM, adjusted resolution settings, and a different optimizer configuration compared to earlier models. This page summarises the SDXL-specific guidance from Kohya's documentation.
+
+## Architecture Differences
+
+| Feature | SD 1.x | SDXL |
+|---------|--------|------|
+| Base training resolution | 512×512 | 1024×1024 |
+| Text encoders | 1 (CLIP-L) | 2 (CLIP-L + OpenCLIP-G) |
+| U-Net cross-attention heads | Standard | More heads, larger dimensions |
+| Approximate model size | 2–4 GB | 6–7 GB |
+| Minimum VRAM for LoRA | 6 GB | 12 GB+ |
+
+The dual text encoder is the most practically important difference. Training both text encoders simultaneously can produce unexpected results because the two encoders condition the model through different pathways. For LoRA training, the standard recommendation is to **train U-Net only** and leave both text encoders frozen.
+
+## Resolution Requirements
+
+<Note>
+  From `docs/LoRA/top_level.md`: set **Max resolution** to at least `1024,1024` for SDXL training. This is the native resolution the model was trained at; using a lower resolution degrades training quality.
+</Note>
+
+In the GUI, set **Max resolution** to `1024,1024` in the basic training section. Aspect Ratio Bucketing will handle rectangular images automatically within this constraint.
+
+## Memory Requirements
+
+- **Minimum VRAM for LoRA:** 12 GB (recommended by the SDXL LoRA guidelines in `docs/LoRA/top_level.md`)
+- **SDXL fine-tuning:** 24 GB VRAM, batch size 1, with optimisations below
+- **PyTorch 2** uses measurably less GPU memory than PyTorch 1 for the same configuration
+
+<Tip>
+  PyTorch 2 is strongly recommended for SDXL training. Switching from PyTorch 1 to 2 can free enough VRAM to meaningfully increase batch size or reduce the need for gradient checkpointing.
+</Tip>
+
+## LoRA Training: Recommended Settings
+
+For SDXL LoRA, the most important setting is `--network_train_unet_only`. This prevents the dual text encoders from being updated, which avoids the instability caused by training two encoders simultaneously.
+
+In the GUI, enable the **Train U-Net only** checkbox in the network settings section.
+
+**Other recommended LoRA settings for SDXL:**
+
+| Setting | Recommended value |
+|---------|------------------|
+| Max resolution | `1024,1024` |
+| Network rank | 16–32 |
+| Network alpha | 8–16 |
+| Mixed precision | `bf16` (RTX 30xx+) or `fp16` |
+| Optimizer | Adafactor (see below) |
+| Cache latents | Enabled |
+| xformers | Enabled |
+
+## Adafactor Optimizer Configuration
+
+Standard AdamW8bit can work for SDXL LoRA but Adafactor is preferred because it uses significantly less VRAM. The following configuration disables Adafactor's automatic learning rate adjustment and uses a fixed learning rate instead:
+
+```toml
+optimizer_type = "adafactor"
+optimizer_args = [ "scale_parameter=False", "relative_step=False", "warmup_init=False" ]
+lr_scheduler = "constant_with_warmup"
+lr_warmup_steps = 100
+learning_rate = 4e-7
+```
+
+<Note>
+  `4e-7` is the standard learning rate for SDXL as documented in `docs/LoRA/top_level.md`. This is lower than typical SD 1.x values because SDXL weights are more sensitive to large updates.
+</Note>
+
+Enter the `optimizer_args` values in the **Optimizer extra arguments** field in the GUI, one per line, or provide them via a saved configuration file.
+
+## Fine-Tuning: Recommended Settings
+
+From `docs/Finetuning/top_level.md`, SDXL fine-tuning on 24 GB VRAM requires all of the following simultaneously:
+
+- **Train U-Net only** (skip text encoders)
+- **Gradient checkpointing** enabled
+- **Cache text encoder outputs** (`--cache_text_encoder_outputs`)
+- **Cache latents** enabled
+- **Adafactor** optimizer (RMSprop 8bit or Adagrad 8bit may also work)
+
+<Warning>
+  AdamW 8bit does not appear to work reliably for SDXL fine-tuning. Stick to Adafactor, RMSprop 8bit, or Adagrad 8bit.
+</Warning>
+
+The Adafactor config for fine-tuning is the same as for LoRA:
+
+```toml
+optimizer_type = "adafactor"
+optimizer_args = [ "scale_parameter=False", "relative_step=False", "warmup_init=False" ]
+lr_scheduler = "constant_with_warmup"
+lr_warmup_steps = 100
+learning_rate = 4e-7
+```
+
+## SDXL Checklist
+
+Before starting an SDXL training run, verify:
+
+<Steps>
+  <Step title="Resolution set to 1024,1024">
+    In **Max resolution**, ensure both dimensions are at least 1024.
+  </Step>
+  <Step title="SDXL checkbox enabled">
+    In the **Source model** section, check the **SDXL** checkbox so the GUI loads SDXL-specific parameters and passes the correct flags to the training script.
+  </Step>
+  <Step title="Train U-Net only (LoRA)">
+    Check **Network train unet only** to freeze both text encoders during LoRA training.
+  </Step>
+  <Step title="Optimizer set to Adafactor">
+    Replace the default AdamW8bit with Adafactor and supply the fixed learning rate arguments.
+  </Step>
+  <Step title="PyTorch 2 installed">
+    Confirm your environment is running PyTorch 2 to benefit from the reduced VRAM usage.
+  </Step>
+</Steps>
+
+## Official Reference
+
+For a comprehensive list of SDXL training parameters and script-level options, refer to the [official sd-scripts README](https://github.com/kohya-ss/sd-scripts/blob/main/README.md#sdxl-training).
+
+<CardGroup cols={2}>
+  <Card title="LoRA Training" href="/training/lora">
+    Full LoRA guide including SDXL Adafactor config
+  </Card>
+  <Card title="Flux.1 & SD3" href="/training/flux1-sd3">
+    Training newer generation models
+  </Card>
+</CardGroup>

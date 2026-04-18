@@ -1,0 +1,142 @@
+---
+title: "Textual Inversion: Train and Use Custom Embeddings"
+description: "Learn how Textual Inversion works in Kohya's GUI. Covers token strings, embedding dimensions, dataset prep, and using trained embeddings in generation."
+---
+
+Textual Inversion trains a new **text embedding** — a short sequence of learned numeric vectors that represent a concept — without modifying any of the model's neural network weights. The result is an embedding file (typically a few KB to a few hundred KB) that teaches the text encoder a new "word" for your subject. This is the lightest-weight training method available in Kohya's GUI.
+
+The underlying script is `train_textual_inversion.py`. The trained embedding is saved as a `.pt` or `.safetensors` file and used by placing the token string in your prompt.
+
+## How Textual Inversion Differs from LoRA and DreamBooth
+
+| Aspect | Textual Inversion | LoRA | DreamBooth |
+|--------|------------------|------|------------|
+| Model weights modified | No | No (adapter only) | Yes (full model) |
+| Output size | Few KB–few hundred KB | 4–200 MB | 2–7 GB |
+| What is trained | Text encoder embedding | U-Net + text encoder adapters | Full U-Net + text encoder |
+| Prompt integration | Token string in prompt | `<lora:name:weight>` syntax | Identifier in prompt |
+| Generalisation | Limited to text space | Better generalisation | Strongest generalisation |
+
+Because no weights change, Textual Inversion cannot teach the model to render things it has no visual concept of at all. It works best for reorienting existing concepts — a specific style, a particular face, or a named object — rather than genuinely novel visual information.
+
+## Key Parameters
+
+<AccordionGroup>
+  <Accordion title="Token string">
+    The new "word" you are teaching the model. This string will be embedded in your prompts to trigger the trained concept.
+
+    Choose a string that is unlikely to collide with existing vocabulary. Wrapping it in angle brackets is a common convention — e.g. `<my-style>` or `<my-character>`.
+
+    The `token_string` field in `textual_inversion_gui.py` sets this value. During training, every image is captioned with the token string prepended or embedded per the chosen template.
+  </Accordion>
+
+  <Accordion title="Initialisation word (init_word)">
+    A real word from the existing vocabulary that the new embedding is initialised from. Choosing a word semantically close to your concept (e.g. `girl` for a character, `painting` for an art style) gives the optimiser a better starting point and can speed up convergence.
+  </Accordion>
+
+  <Accordion title="Num vectors per token">
+    Number of embedding vectors allocated to the token. A single vector (`1`) captures simple concepts. Multiple vectors (`2`–`4`) give the embedding more expressive capacity for complex subjects at the cost of a slightly longer prompt.
+
+    Set via `num_vectors_per_token` in the GUI. Default is `1`.
+  </Accordion>
+
+  <Accordion title="Template">
+    The captioning template used during training. Common choices include style-oriented templates (`a painting in the style of <token>`) and subject-oriented templates (`a photo of <token>`). The selected template determines how the token is embedded in training captions.
+  </Accordion>
+
+  <Accordion title="Weights (resume)">
+    Path to an existing embedding file to continue training from, specified via the `weights` parameter. Useful for iterative refinement.
+  </Accordion>
+</AccordionGroup>
+
+## Dataset Preparation
+
+Textual Inversion supports both the DreamBooth class+identifier method and the captioning method for dataset organisation. A small, high-quality dataset (15–30 images) is typical:
+
+<Steps>
+  <Step title="Collect training images">
+    Gather 15–30 images representing the concept. For a style, these should be consistent examples of that style. For a subject, include varied poses, lighting, and backgrounds to prevent overfitting to specific compositions.
+  </Step>
+
+  <Step title="Prepare caption files (optional)">
+    For the captioning method, place a `.caption` file alongside each image. The template setting can auto-generate captions that include the token string, so manual captions are optional.
+  </Step>
+
+  <Step title="Write a dataset configuration file">
+    ```toml
+    [general]
+    enable_bucket = true
+
+    [[datasets]]
+    resolution = 512
+    batch_size = 1
+
+      [[datasets.subsets]]
+      image_dir = '/path/to/training_images'
+      caption_extension = '.caption'
+      num_repeats = 10
+    ```
+  </Step>
+</Steps>
+
+## Training Workflow
+
+<Steps>
+  <Step title="Open the Textual Inversion tab">
+    In Kohya's GUI, select the **Textual Inversion** tab. This exposes `train_textual_inversion.py` parameters.
+  </Step>
+
+  <Step title="Set the base model">
+    Choose the checkpoint you want to extend. Embeddings are model-specific — an embedding trained on an SD 1.5 base will not transfer to SD 2.x or SDXL without retraining.
+  </Step>
+
+  <Step title="Configure the embedding">
+    - **Token string** — the new word (e.g. `my-concept`)
+    - **Init word** — a real word close to your concept
+    - **Num vectors per token** — start with `1`; increase to `2–3` for complex subjects
+    - **Template** — choose based on whether you're training a style or a subject
+  </Step>
+
+  <Step title="Set training parameters">
+    Textual Inversion is less demanding than LoRA or DreamBooth. Common settings:
+
+    - Learning rate: `5e-4` to `1e-3` (higher than LoRA because only the embedding is updated)
+    - Epochs: 50–200 (longer runs often needed due to the small parameter count)
+    - Batch size: 1–2
+  </Step>
+
+  <Step title="Train and evaluate">
+    Click **Start training**. Because only a tiny number of parameters are updated, training is fast. Evaluate by inserting the token string into generation prompts and checking the result. If the concept isn't appearing, try more epochs or a higher learning rate.
+  </Step>
+</Steps>
+
+## Using Trained Embeddings in Generation
+
+Copy the output `.pt` or `.safetensors` file to your frontend's embeddings folder (e.g. `embeddings/` in AUTOMATIC1111). Then reference it in a prompt using the token string directly:
+
+```
+a portrait of my-concept, masterpiece, best quality
+```
+
+Or with the file name in angle brackets if required by your frontend:
+
+```
+a portrait of <my-concept>, masterpiece, best quality
+```
+
+<Note>
+  Embeddings are bound to a specific base model architecture. An SD 1.x embedding will not work with SDXL. Retrain with the target model if you need cross-architecture support.
+</Note>
+
+<Warning>
+  Textual Inversion cannot inject genuinely new visual information that the model has no internal representation of. For novel subjects (a specific real person, a proprietary design), LoRA or DreamBooth will produce much stronger results.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="LoRA Training" href="/training/lora">
+    More powerful adapter-based approach
+  </Card>
+  <Card title="DreamBooth Training" href="/training/dreambooth">
+    Full model training for specific subjects
+  </Card>
+</CardGroup>

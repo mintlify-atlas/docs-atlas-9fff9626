@@ -1,0 +1,223 @@
+---
+title: "LoRA Manipulation Tools: Merge, Extract, Resize, Verify"
+description: "Post-process LoRA files in Kohya's GUI: merge, extract from model diffs, resize rank with SVD, verify weights, and extract from DyLoRA checkpoints."
+---
+
+Kohya's GUI includes a dedicated set of LoRA post-processing tools accessible from the **LoRA** tab's utility sub-tabs and from the **Utilities** section. These tools let you combine, derive, compress, and validate LoRA files without retraining. All tools accept `.safetensors` and `.pt` files and write `.safetensors` output by default.
+
+<CardGroup cols={2}>
+  <Card title="Merge LoRA" icon="merge" href="#merge-lora">
+    Combine up to four LoRA files, or bake LoRAs into an SD checkpoint.
+  </Card>
+  <Card title="Merge LoRA (SVD)" icon="diagram-project" href="#merge-lora-svd">
+    Merge LoRAs using SVD decomposition to produce a new, lower-rank LoRA.
+  </Card>
+  <Card title="Extract LoRA" icon="scissors" href="#extract-lora">
+    Derive a LoRA from the weight difference between a base and fine-tuned model.
+  </Card>
+  <Card title="Resize LoRA" icon="arrows-left-right" href="#resize-lora">
+    Change a LoRA's rank with static or dynamic methods.
+  </Card>
+  <Card title="Verify LoRA" icon="circle-check" href="#verify-lora">
+    Run a weight integrity check on a LoRA file.
+  </Card>
+  <Card title="Extract DyLoRA" icon="layer-group" href="#extract-dylora">
+    Pull a fixed-rank sub-network from a DyLoRA checkpoint.
+  </Card>
+</CardGroup>
+
+---
+
+## Merge LoRA
+
+The **Merge LoRA** tab (`sd-scripts/networks/merge_lora.py` or `sdxl_merge_lora.py` for SDXL) merges up to four LoRA models together, or merges one or more LoRAs into a full Stable Diffusion checkpoint.
+
+**Requirements**: provide at least two LoRA models (A and B), or one SD model plus at least one LoRA.
+
+<AccordionGroup>
+  <Accordion title="Parameters">
+
+    | Field | Description |
+    |-------|-------------|
+    | **SD Model** | *(Optional)* Base checkpoint (`.ckpt` or `.safetensors`) to merge the LoRAs into. Leave empty to merge LoRAs together only. |
+    | **SDXL model** | Enable if the base checkpoint is an SDXL model. Auto-detected when you select an SD model. |
+    | **LoRA model A / B / C / D** | Paths to the LoRA files to merge (`.safetensors` or `.pt`). At minimum A and B, or SD model plus A. |
+    | **Model A/B/C/D merge ratio** | Weight applied to each LoRA when merging (0.0–1.0). A ratio of `0.5` applies 50 % of that LoRA's influence. |
+    | **Save to** | Output path for the merged file. |
+    | **Merge precision** | Floating-point precision used during the merge computation: `fp16`, `bf16`, or `float`. |
+    | **Save precision** | Floating-point precision of the saved output: `fp16`, `bf16`, or `float`. |
+
+  </Accordion>
+  <Accordion title="Merging two LoRAs at equal weight">
+
+    <Steps>
+      <Step title="Leave SD Model empty">
+        You are merging LoRAs together, not baking them into a base model.
+      </Step>
+      <Step title="Select LoRA A and LoRA B">
+        Point each dropdown at the `.safetensors` files you want to combine.
+      </Step>
+      <Step title="Set ratios">
+        Set **Ratio A** to `0.5` and **Ratio B** to `0.5` for an equal blend.
+      </Step>
+      <Step title="Set output path and precision">
+        Choose a **Save to** path. `fp16` is the standard save precision.
+      </Step>
+      <Step title="Click Merge model">
+        The merged LoRA is written to the path you specified.
+      </Step>
+    </Steps>
+
+  </Accordion>
+  <Accordion title="Baking a LoRA into a checkpoint">
+
+    <Steps>
+      <Step title="Select an SD model">
+        Point **SD Model** at your base checkpoint.
+      </Step>
+      <Step title="Select one or more LoRAs">
+        Fill in LoRA A (and optionally B–D).
+      </Step>
+      <Step title="Set merge ratios">
+        A ratio of `1.0` fully bakes the LoRA. Values below `1.0` apply a partial blend.
+      </Step>
+      <Step title="Set Save to and click Merge model">
+        The output is a full checkpoint that already contains the LoRA influence.
+      </Step>
+    </Steps>
+
+    <Note>
+    Baking a LoRA into a checkpoint produces a file the same size as the original checkpoint (2–7 GB), not a small LoRA file.
+    </Note>
+
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Merge LoRA (SVD)
+
+The **Merge LoRA (SVD)** tab (`sd-scripts/networks/svd_merge_lora.py`) merges up to four LoRAs using Singular Value Decomposition. Unlike the standard merge, you can specify a **new rank** for the output LoRA, allowing you to downsample the merged result.
+
+The total of all ratios does not need to equal 1; the tool normalises them automatically.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| **LoRA A / B / C / D** | — | Input LoRA files. |
+| **Ratio A / B / C / D** | `0.25` each | Weight for each model in the merge. |
+| **New Rank** | `128` | Output LoRA rank (1–1024). |
+| **New Conv Rank** | `128` | Output rank for convolutional layers (1–1024). |
+| **Save to** | — | Output file path. |
+| **Merge precision** | `float` | Computation precision. |
+| **Save precision** | `float` | Output file precision. |
+| **Device** | `cuda` | `cpu` or `cuda`. |
+
+<Tip>
+SVD merge is the preferred method when merging LoRAs of different ranks or when you want to reduce file size by targeting a lower **New Rank**.
+</Tip>
+
+---
+
+## Extract LoRA
+
+The **Extract LoRA** tab (`sd-scripts/networks/extract_lora_from_models.py`) computes the weight difference between a fine-tuned model and its base model, then decomposes that difference into a LoRA network. This lets you recover a LoRA-equivalent adapter from a full fine-tune checkpoint.
+
+<AccordionGroup>
+  <Accordion title="Parameters">
+
+    | Field | Default | Description |
+    |-------|---------|-------------|
+    | **Finetuned model** | — | The model that was fine-tuned (`.ckpt` or `.safetensors`). |
+    | **Stable Diffusion base model** | — | The original base model the fine-tune started from. |
+    | **Save to** | — | Output path for the extracted LoRA. |
+    | **Save precision** | `fp16` | Output file precision. |
+    | **Load precision** | `fp16` | Precision used when loading both models into memory. |
+    | **Network Dimension (Rank)** | `128` | Rank of the extracted LoRA (4–1024). |
+    | **Conv Dimension (Rank)** | `128` | Rank for convolutional layers. Set to `0` to skip conv layers. |
+    | **Clamp Quantile** | `0.99` | Filters out extreme singular values during decomposition (0–1). |
+    | **Minimum difference** | `0.01` | Layers whose weight difference is below this threshold are skipped. |
+    | **v2** | `false` | Enable for SD 2.x base models. Auto-detected from the finetuned model path. |
+    | **SDXL** | `false` | Enable for SDXL base models. Auto-detected. |
+    | **Device** | `cuda` | `cpu` or `cuda`. |
+    | **Load finetuned model to** | `cpu` | *(SDXL only)* Device for the finetuned model during loading. |
+    | **Load base model to** | `cpu` | *(SDXL only)* Device for the base model during loading. |
+
+  </Accordion>
+  <Accordion title="Extraction workflow">
+
+    <Steps>
+      <Step title="Select both models">
+        Point **Finetuned model** at the checkpoint you want to convert and **Stable Diffusion base model** at the exact base checkpoint it was trained on. Mismatched base models produce noisy extractions.
+      </Step>
+      <Step title="Set the rank">
+        A **Network Dimension** of `64` or `128` captures most of the fine-tune. Higher ranks increase file size and may introduce base model bleed.
+      </Step>
+      <Step title="Set Save to and click Extract LoRA model">
+        Extraction runs on CPU or CUDA depending on your selection. On CPU it can take several minutes for large checkpoints.
+      </Step>
+    </Steps>
+
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Resize LoRA
+
+The **Resize LoRA** tab (`sd-scripts/networks/resize_lora.py`) changes a LoRA's internal rank — either by truncating to a fixed dimension or by applying a dynamic method that preserves the most important singular values.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| **Source LoRA** | — | The LoRA file to resize. |
+| **Save to** | — | Output path. `.safetensors` is appended automatically if omitted. |
+| **Desired LoRA rank** | `4` | Target rank (1–1024). Used for static resizing. |
+| **Dynamic method** | `sv_fro` | How to compute the optimal rank per layer: `None`, `sv_ratio`, `sv_fro`, or `sv_cumulative`. |
+| **Dynamic parameter** | `0.9` | Threshold value for the chosen dynamic method (see table below). |
+| **Save precision** | `fp16` | Output file precision. |
+| **Device** | `cuda` | `cpu` or `cuda`. |
+| **Verbose logging** | `true` | Prints per-layer rank decisions to the console. |
+
+**Dynamic method reference**
+
+| Method | Parameter range | Behaviour |
+|--------|----------------|-----------|
+| `None` | — | Uses **Desired LoRA rank** as a hard cutoff for all layers. |
+| `sv_ratio` | ≥ 2 | Keeps singular values until the ratio of the largest to the current value exceeds the parameter. |
+| `sv_fro` | 0 – 1 | Keeps enough singular values to preserve the given fraction of the Frobenius norm. `0.9` keeps 90 %. |
+| `sv_cumulative` | 0 – 1 | Keeps the minimum number of values whose cumulative sum exceeds the parameter fraction. |
+
+<Tip>
+`sv_fro` with a value of `0.9` is a good default: it adapts per layer rather than applying a global rank cutoff, so high-information layers retain more vectors while low-information layers are aggressively compressed.
+</Tip>
+
+---
+
+## Verify LoRA
+
+The **Verify LoRA** tab (`sd-scripts/networks/check_lora_weights.py`) checks the weight tensors in a LoRA file and reports any anomalies — NaN values, zero tensors, or structural mismatches that would cause silent failures during training or inference.
+
+| Field | Description |
+|-------|-------------|
+| **LoRA model** | Path to the `.safetensors` or `.pt` file to verify. |
+
+Click **Verify** to run the check. Output and any errors are shown in the **Output** and **Error** text boxes below the button.
+
+<Note>
+Verify LoRA is especially useful after extraction or resizing, where numerical instability can introduce NaN weights that appear valid on disk but produce blank outputs at inference time.
+</Note>
+
+---
+
+## Extract DyLoRA
+
+The **Extract DyLoRA** tab (`sd-scripts/networks/extract_lora_from_dylora.py`) extracts a standard, fixed-rank LoRA from a **DyLoRA** checkpoint. DyLoRA networks are trained across multiple ranks simultaneously; this tool selects a specific rank unit to export.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| **DyLoRA model** | — | Path to the DyLoRA `.safetensors` file. |
+| **Save to** | — | Output path for the extracted fixed-rank LoRA. |
+| **Network Dimension (Rank)** | `1` | The rank unit to extract (1–256). Must be a rank that was included during DyLoRA training. |
+
+<Tip>
+Check your DyLoRA training configuration to confirm which rank units were trained. Extracting a rank that was not trained produces a degenerate LoRA.
+</Tip>

@@ -1,0 +1,124 @@
+---
+title: "Install Kohya's GUI on Windows using uv (recommended)"
+description: "Step-by-step guide to installing Kohya's GUI on Windows with the uv package manager, covering prerequisites, launch options, and upgrades."
+---
+
+The `uv` method is the recommended installation path for Windows users. The `gui-uv.bat` script handles virtual environment creation, dependency resolution, and future upgrades automatically — there is no separate setup step. If `uv` is not already on your system, the script will offer to install it for you.
+
+## Prerequisites
+
+Install all of the following before cloning the repository:
+
+- [Python 3.11.9](https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe) — enable **"Add to PATH"** during setup
+- [Git for Windows](https://git-scm.com/download/win)
+- [NVIDIA CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive?target_os=Windows&target_arch=x86_64)
+- **NVIDIA GPU** — VRAM requirements vary by training method and model size
+- *(Optional)* [Visual Studio Redistributables](https://aka.ms/vs/17/release/vc_redist.x64.exe) — required by some CUDA components
+- *(Optional)* **NVIDIA cuDNN** — improves training throughput and allows larger batch sizes
+
+<Note>
+  The `uv` environment will use the Python version specified in the `.python-version` file at the root of the repository. Edit that file to pin a different supported version.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Install Python 3.11.9">
+    Download [python-3.11.9-amd64.exe](https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe) and run the installer.
+
+    <Warning>
+      Check the **"Add Python to PATH"** box on the first screen of the installer. Without this, the scripts will not find the Python executable.
+    </Warning>
+  </Step>
+
+  <Step title="Install CUDA 12.8 Toolkit">
+    Download and run the installer from the [NVIDIA CUDA 12.8 archive](https://developer.nvidia.com/cuda-12-8-0-download-archive?target_os=Windows&target_arch=x86_64).
+  </Step>
+
+  <Step title="Install Git for Windows">
+    Download and install from [git-scm.com/download/win](https://git-scm.com/download/win). Use the default options.
+  </Step>
+
+  <Step title="Install Visual Studio Redistributables">
+    Download and run [vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe). This is optional but prevents missing DLL errors at runtime.
+  </Step>
+
+  <Step title="Clone the repository">
+    Open a Command Prompt or PowerShell window and run:
+
+    ```powershell
+    git clone --recursive https://github.com/bmaltais/kohya_ss.git
+    cd kohya_ss
+    ```
+
+    The `--recursive` flag ensures all required Git submodules are fetched.
+  </Step>
+
+  <Step title="Launch the GUI">
+    ```cmd
+    .\gui-uv.bat
+    ```
+
+    On first run, if `uv` is not found the script will prompt you:
+
+    - Press `Y` to let the script install `uv` automatically.
+    - Press `N` to cancel and [install `uv` manually](https://astral.sh/uv) before re-running.
+
+    Once `uv` is available, the script installs all Python dependencies and opens the Gradio server in your default browser.
+  </Step>
+</Steps>
+
+## Starting the GUI with options
+
+Pass CLI arguments directly to `gui-uv.bat` to control the server:
+
+```cmd
+.\gui-uv.bat --listen 127.0.0.1 --server_port 7860 --inbrowser --share
+```
+
+## Available CLI options
+
+All flags accepted by `gui-uv.bat` (and `kohya_gui.py` directly):
+
+```text
+  --help                show this help message and exit
+  --config CONFIG       Path to the toml config file for interface defaults
+  --debug               Debug on
+  --listen LISTEN       IP to listen on for connections to Gradio
+  --username USERNAME   Username for authentication
+  --password PASSWORD   Password for authentication
+  --server_port SERVER_PORT
+                        Port to run the server listener on
+  --inbrowser           Open in browser
+  --share               Share the gradio UI
+  --headless            Is the server headless
+  --language LANGUAGE   Set custom language
+  --use-ipex            Use IPEX environment
+  --use-rocm            Use ROCm environment
+  --do_not_use_shell    Enforce not to use shell=True when running external commands
+  --do_not_share        Do not share the gradio UI
+  --requirements REQUIREMENTS
+                        requirements file to use for validation
+  --root_path ROOT_PATH
+                        `root_path` for Gradio to enable reverse proxy support. e.g. /kohya_ss
+  --noverify            Disable requirements verification
+```
+
+## Upgrading
+
+<Steps>
+  <Step title="Pull the latest changes">
+    Open a Command Prompt in the `kohya_ss` directory and run:
+
+    ```powershell
+    git pull
+    ```
+  </Step>
+  <Step title="Re-run the launch script">
+    ```cmd
+    .\gui-uv.bat
+    ```
+
+    The script automatically detects changed dependencies and updates the `uv`-managed environment. No separate setup command is needed.
+  </Step>
+</Steps>

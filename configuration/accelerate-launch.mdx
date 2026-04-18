@@ -1,0 +1,249 @@
+---
+title: 'Configure Accelerate for Multi-GPU and Mixed Precision'
+description: 'Configure HuggingFace Accelerate for multi-GPU training, mixed precision, Dynamo compilation, and distributed setups directly from the GUI.'
+---
+
+The **Accelerate launch** tab controls how Kohya's training scripts are launched via [HuggingFace Accelerate](https://huggingface.co/docs/accelerate). Accelerate is a library that abstracts multi-GPU, mixed-precision, and distributed training so the same script runs identically whether you have one GPU or many. Settings in this tab are translated directly into arguments for the `accelerate launch` command that wraps every training run.
+
+<Note>
+  Default values for all fields in this tab can be pre-configured in the `[accelerate_launch]` section of your `config.toml`. See [config.toml](/configuration/config-toml) for details.
+</Note>
+
+---
+
+## Resource selection
+
+### Mixed precision
+
+Controls the floating-point format used during training. Mixed precision reduces VRAM usage by computing certain operations in a lower-precision format while keeping model weights in a higher-precision format.
+
+<AccordionGroup>
+  <Accordion title="Mixed precision options">
+    <ParamField body="mixed_precision" type="string" default="fp16">
+      | Value  | Description |
+      |--------|-------------|
+      | `no`   | Full fp32 precision. Highest accuracy, highest VRAM usage. |
+      | `fp16` | Half precision. Supported on all NVIDIA GPUs. Requires matching accelerate configuration. |
+      | `bf16` | Brain float 16. Better numerical stability than fp16. Requires RTX 30 series or newer (Ampere+). |
+      | `fp8`  | 8-bit float (experimental). Extreme memory savings; may reduce stability. |
+
+      The value set here must match the `mixed_precision` setting you configured when running `accelerate config`. If they differ, training may fail or produce unexpected results.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### Number of processes
+
+<AccordionGroup>
+  <Accordion title="num_processes">
+    <ParamField body="num_processes" type="integer" default="1" minimum="1">
+      Total number of processes to launch in parallel. For single-GPU training, leave this at `1`. For multi-GPU training on a single machine, set this to the number of GPUs you want to use. Each process uses one GPU.
+    </ParamField>
+  </Accordion>
+  <Accordion title="num_machines">
+    <ParamField body="num_machines" type="integer" default="1" minimum="1">
+      Total number of machines participating in this distributed training run. Set to `1` for all local setups. Increase this only when running across multiple physical machines in a cluster.
+    </ParamField>
+  </Accordion>
+  <Accordion title="num_cpu_threads_per_process">
+    <ParamField body="num_cpu_threads_per_process" type="integer" default="2" minimum="1">
+      Number of CPU threads allocated per training process. Matches the slider range of `1` to your system's logical CPU count. Higher values can improve data loading throughput, but consuming too many threads may starve other system processes. `2` is a reliable default for most setups.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Dynamo (torch.compile) settings
+
+PyTorch's `dynamo` JIT compiler can speed up training by compiling parts of the model graph ahead of time. These settings control whether Dynamo is enabled and how it behaves.
+
+<AccordionGroup>
+  <Accordion title="Dynamo backend">
+    <ParamField body="dynamo_backend" type="string" default="no">
+      The compilation backend used by `torch.compile`. Set to `no` to disable Dynamo entirely (the safe default for most users).
+
+      Available backends:
+      - `no` — Dynamo disabled
+      - `eager` — Python eager fallback (debugging)
+      - `aot_eager` — Ahead-of-time eager
+      - `inductor` — Triton-based kernel fusion (recommended if enabling Dynamo on modern NVIDIA GPUs)
+      - `aot_ts_nvfuser` — TorchScript + nvFuser
+      - `nvprims_nvfuser` — NVFuser primitive ops
+      - `cudagraphs` — CUDA graph capture
+      - `ofi` — Onnx FusedInference
+      - `fx2trt` — FX to TensorRT
+      - `onnxrt` — ONNX Runtime
+      - `tensorrt` — TensorRT (requires installation)
+      - `ipex` — Intel Extension for PyTorch
+      - `tvm` — Apache TVM
+    </ParamField>
+  </Accordion>
+  <Accordion title="Dynamo mode">
+    <ParamField body="dynamo_mode" type="string" default="default">
+      Compilation mode balancing compile time against runtime performance:
+
+      | Mode | Behaviour |
+      |------|-----------|
+      | `default` | Balanced compilation, suitable for most use cases |
+      | `reduce-overhead` | Reduces Python overhead; useful for small batches |
+      | `max-autotune` | Maximises throughput via extensive auto-tuning; slow to compile |
+    </ParamField>
+  </Accordion>
+  <Accordion title="Dynamo use fullgraph">
+    <ParamField body="dynamo_use_fullgraph" type="boolean" default="false">
+      When enabled, Dynamo attempts to compile the entire model as a single graph rather than breaking it into subgraphs at unsupported operations. If the model contains any unsupported ops, compilation will fail instead of falling back to eager mode.
+    </ParamField>
+  </Accordion>
+  <Accordion title="Dynamo use dynamic">
+    <ParamField body="dynamo_use_dynamic" type="boolean" default="false">
+      Enables dynamic shape tracing, allowing compiled kernels to handle tensors of varying sizes. Useful when training with Aspect Ratio Bucketing, which produces batches of different resolutions.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+  Dynamo compilation is experimental for Stable Diffusion training. Leave `dynamo_backend = "no"` unless you have a specific reason to enable it, as it can cause training failures on some configurations.
+</Warning>
+
+---
+
+## Hardware selection
+
+### Multi-GPU
+
+<AccordionGroup>
+  <Accordion title="multi_gpu">
+    <ParamField body="multi_gpu" type="boolean" default="false">
+      Enables distributed GPU training across multiple GPUs. When checked, Accelerate uses all available GPUs (or those listed in **GPU IDs**) and splits the training workload between them using data parallelism.
+
+      When using multi-GPU training, also set `num_processes` to match the number of GPUs.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Distributed GPU settings
+
+### GPU IDs
+
+<AccordionGroup>
+  <Accordion title="gpu_ids">
+    <ParamField body="gpu_ids" type="string" default="">
+      Comma-separated list of GPU device IDs to use for training. Leave empty to use the default GPU (typically GPU 0).
+
+      **Examples:**
+      - `0` — Use only the first GPU
+      - `1` — Use only the second GPU
+      - `0,1` — Use the first two GPUs (requires `multi_gpu` enabled)
+
+      Valid ID range is 0–128. The GUI validates the input and logs an error if an out-of-range value is entered.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+### Main process port
+
+<AccordionGroup>
+  <Accordion title="main_process_port">
+    <ParamField body="main_process_port" type="integer" default="0" minimum="0" maximum="65535">
+      The TCP port used by the main Accelerate process for inter-process communication during distributed training. Set to `0` to let Accelerate choose a port automatically. Specify an explicit port when running multiple GUI instances on the same machine to avoid port conflicts.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Extra accelerate launch arguments
+
+<AccordionGroup>
+  <Accordion title="extra_accelerate_launch_args">
+    <ParamField body="extra_accelerate_launch_args" type="string" default="">
+      Additional arguments appended verbatim to the `accelerate launch` command. Use this for advanced Accelerate options not exposed in the GUI.
+
+      **Example:**
+      ```text
+      --same_network --machine_rank 4
+      ```
+
+      Each argument must be space-separated. Do not include quotes around individual argument values; the GUI handles quoting internally.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## How to select a specific GPU for training
+
+If you have multiple GPUs in your machine but only want to use one of them (for example, to reserve one GPU for inference while the other trains), follow these steps:
+
+<Steps>
+  <Step title="Open the Accelerate launch tab">
+    In the Kohya GUI, open any training tab (LoRA, DreamBooth, etc.) and navigate to the **Accelerate launch** tab within it.
+  </Step>
+  <Step title="Ensure Multi GPU is unchecked">
+    Uncheck **Multi GPU**. Using a single specific GPU does not require the multi-GPU distributed mode.
+  </Step>
+  <Step title="Set the GPU IDs field">
+    Enter the device ID of the GPU you want to use. For the second GPU (index 1), enter `1`. For the third GPU (index 2), enter `2`, and so on.
+
+    ```text
+    GPU IDs: 1
+    ```
+  </Step>
+  <Step title="Start training">
+    Launch training normally. The selected GPU will be used exclusively.
+  </Step>
+</Steps>
+
+---
+
+## Running multiple GUI instances on different ports
+
+On Linux, you can run separate Kohya GUI instances for different projects or GPUs simultaneously. Each instance must listen on a different port.
+
+<Steps>
+  <Step title="Start the first instance">
+    ```bash
+    nohup ./gui.sh --listen 0.0.0.0 --server_port 7860 --headless > log1.log 2>&1 &
+    ```
+  </Step>
+  <Step title="Start additional instances on different ports">
+    ```bash
+    nohup ./gui.sh --listen 0.0.0.0 --server_port 7861 --headless > log2.log 2>&1 &
+    ```
+  </Step>
+  <Step title="Set different GPU IDs in each instance">
+    In each GUI instance, go to the **Accelerate launch** tab and set **GPU IDs** to the GPU designated for that instance (e.g., `0` for the first instance, `1` for the second). Also set a different **Main process port** in each instance to avoid port conflicts between Accelerate processes.
+  </Step>
+  <Step title="Monitor each instance separately">
+    Open each GUI in a separate browser tab by navigating to `http://your-server:7860` and `http://your-server:7861`. For terminal access, use SSH combined with `tmux` or `screen` to keep sessions alive.
+  </Step>
+</Steps>
+
+<Tip>
+  Setting a unique **Main process port** in each GUI instance (e.g., `29500` and `29501`) prevents Accelerate from conflicting when both instances attempt to launch distributed training processes at the same time.
+</Tip>
+
+---
+
+## config.toml reference for accelerate_launch
+
+All settings in this tab can be persisted in `config.toml`:
+
+```toml
+[accelerate_launch]
+dynamo_backend = "no"
+dynamo_mode = "default"
+dynamo_use_dynamic = false
+dynamo_use_fullgraph = false
+extra_accelerate_launch_args = ""
+gpu_ids = ""
+main_process_port = 0
+mixed_precision = "fp16"
+multi_gpu = false
+num_cpu_threads_per_process = 2
+num_machines = 1
+num_processes = 1
+```

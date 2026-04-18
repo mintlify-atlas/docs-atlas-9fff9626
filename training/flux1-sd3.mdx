@@ -1,0 +1,205 @@
+---
+title: "Train LoRA on Flux.1 and Stable Diffusion 3 Models"
+description: "Train LoRA on Flux.1 and SD3 in Kohya's GUI v25.0.0+. Covers VAE, CLIP-L, and T5-XXL paths, block training controls, and architecture differences from SDXL."
+---
+
+Kohya's GUI v25.0.0 introduced support for **Flux.1** and **Stable Diffusion 3 (SD3)**, bringing the GUI in line with the latest model architectures. Both models differ fundamentally from SD 1.x and SDXL in their text conditioning — Flux.1 uses CLIP-L and T5-XXL in combination, while SD3 uses a triple text encoder setup — and their internal architectures use transformer blocks rather than a U-Net.
+
+The Flux.1 and SD3 parameters are exposed through dedicated GUI sections rendered by `class_flux1.py` and `class_sd3.py`. For a complete reference of script-level flags, consult the [sd-scripts SD3/Flux README](https://github.com/kohya-ss/sd-scripts/blob/sd3/README.md).
+
+<Note>
+  Users who prefer the pre-Flux.1/SD3 behaviour can check out tag `v24.1.7`:
+  ```bash
+  git checkout v24.1.7
+  ```
+</Note>
+
+## What Changed in v25.0.0
+
+The major update in v25.0.0 (from `CHANGELOG` / README):
+
+- **Flux.1 support** — LoRA training and fine-tuning for Flux.1-dev and Flux.1-schnell models
+- **SD3 support** — LoRA training for Stable Diffusion 3
+- GUI restructured to expose new model-type checkboxes (**Flux.1** and **SD3**) in the Source Model section
+- New accordion panels for Flux.1-specific and SD3-specific parameters
+
+## Flux.1 Architecture Overview
+
+Flux.1 models are **rectified flow transformers** rather than U-Nets. Key architectural differences:
+
+| Feature | SD 1.x / SDXL | Flux.1 |
+|---------|--------------|--------|
+| Backbone | U-Net | Transformer (double + single blocks) |
+| Text encoders | CLIP-L (×1 or ×2) | CLIP-L + T5-XXL |
+| VAE | Standard SD VAE | Separate AE (`ae.safetensors`) |
+| Attention mechanism | Cross-attention | Joint image-text attention |
+| Double blocks | — | 19 blocks |
+| Single blocks | — | 38 blocks |
+
+Because of the separate VAE and text encoder components, Flux.1 training requires you to specify **three separate model paths** that are not bundled inside the main checkpoint.
+
+## Key Parameters from class_flux1.py
+
+The `flux1Training` class in `class_flux1.py` exposes the following parameters in the GUI:
+
+<AccordionGroup>
+  <Accordion title="VAE Path (ae)">
+    Path to the Flux.1 VAE model file (`ae.safetensors`). This is the autoencoder used to encode and decode images. It is separate from the main Flux.1 checkpoint and must be specified explicitly.
+
+    Config key: `flux1.ae`
+  </Accordion>
+
+  <Accordion title="CLIP-L Path (clip_l)">
+    Path to the CLIP-L text encoder model. Flux.1 uses CLIP-L as one of its two text conditioning components. Point this to the `clip_l.safetensors` file.
+
+    Config key: `flux1.clip_l`
+  </Accordion>
+
+  <Accordion title="T5-XXL Path (t5xxl)">
+    Path to the T5-XXL text encoder. T5-XXL is a large language model (approximately 10 GB) that provides rich text conditioning alongside CLIP-L. This is the main driver of Flux.1's strong prompt adherence.
+
+    Config key: `flux1.t5xxl`
+
+    **T5-XXL Max Token Length** — defaults to `512`. Can be increased up to `4096` for very long prompts (config key: `flux1.t5xxl_max_token_length`).
+  </Accordion>
+
+  <Accordion title="Guidance Scale">
+    Guidance scale for Flux.1, default `3.5`. Controls how strongly the model follows the text prompt during the training loss calculation. Range: 0–1024.
+
+    Config key: `flux1.guidance_scale`
+  </Accordion>
+
+  <Accordion title="Discrete Flow Shift">
+    Flow shift for the Euler Discrete Scheduler, default `3.0`. Adjusts the timestep distribution used during training. Valid range is -1024 to 1024.
+
+    Config key: `flux1.discrete_flow_shift`
+  </Accordion>
+
+  <Accordion title="Model Prediction Type">
+    Determines how the model's output is interpreted. Choices: `raw`, `additive`, `sigma_scaled`. Default: `sigma_scaled`.
+
+    Config key: `flux1.model_prediction_type`
+  </Accordion>
+
+  <Accordion title="Timestep Sampling">
+    Controls how timesteps are sampled during training. Choices: `flux_shift`, `sigma`, `shift`, `sigmoid`, `uniform`. Default: `sigma`.
+
+    Config key: `flux1.timestep_sampling`
+  </Accordion>
+
+  <Accordion title="Train Blocks">
+    Selects which transformer blocks to train. Options: `all`, `double`, `single`. Training `all` blocks (default) produces the best quality; training only `double` or `single` blocks reduces memory at the cost of coverage.
+
+    Config key: `flux1.train_blocks`
+  </Accordion>
+
+  <Accordion title="Train Double / Single Block Indices">
+    Fine-grained control over which specific block indices to train. Specified as a comma-separated list or range — e.g. `0,1,5,8` or `0,1,4-5,7` or `all` or `none`.
+
+    - Double blocks: 19 total (`train_double_block_indices`, default `all`)
+    - Single blocks: 38 total (`train_single_block_indices`, default `all`)
+  </Accordion>
+
+  <Accordion title="Split Mode">
+    When enabled, splits the model into chunks for memory-constrained hardware. The model is processed block by block rather than all at once. Default: `false`.
+
+    Config key: `flux1.split_mode`
+  </Accordion>
+
+  <Accordion title="Apply T5 Attention Mask">
+    Applies an attention mask to the T5-XXL encoder and FLUX double blocks. Default: `false`.
+
+    Config key: `flux1.apply_t5_attn_mask`
+  </Accordion>
+
+  <Accordion title="Cache Text Encoder Outputs">
+    Caches CLIP-L and T5-XXL outputs to speed up training. Useful when text encoder outputs are constant across a dataset. Can also be saved to disk (`flux1.cache_text_encoder_outputs_to_disk`).
+  </Accordion>
+
+  <Accordion title="Train T5-XXL">
+    Whether to include T5-XXL in the training targets. Default: `false`. Training T5-XXL requires substantial additional VRAM and is not recommended unless you have a specific reason.
+
+    Config key: `flux1.train_t5xxl`
+  </Accordion>
+</AccordionGroup>
+
+## Per-Layer Rank Configuration
+
+Flux.1 LoRA supports per-layer rank overrides through the **Rank for layers** accordion. Each field corresponds to a specific layer group within the double and single transformer blocks:
+
+| Field | Targets |
+|-------|---------|
+| `img_attn_dim` | Image attention layers in double blocks |
+| `img_mlp_dim` | Image MLP layers in double blocks |
+| `img_mod_dim` | Image modulation layers |
+| `txt_attn_dim` | Text attention layers in double blocks |
+| `txt_mlp_dim` | Text MLP layers in double blocks |
+| `txt_mod_dim` | Text modulation layers |
+| `single_dim` | Single block layers |
+| `single_mod_dim` | Single block modulation layers |
+| `in_dims` | Conditioning layers: `[img_in, time_in, vector_in, guidance_in, txt_in]` |
+
+Leave fields blank to use the global network rank for those layers.
+
+## Fine-Tuning Specific Options
+
+For fine-tuning (not LoRA), additional options are available:
+
+- **Blockwise Fused Optimizer** — enables blockwise optimizers for fused backward pass. Any optimizer is supported.
+- **Fused Backward Pass** — fuses the optimizer step into the backward pass. Only Adafactor optimizer is supported with this option.
+- **CPU Offload Checkpointing** — offloads tensors to CPU during gradient checkpointing. Experimental; reduces VRAM at the cost of speed.
+
+## Differences from SD 1.x / SDXL Training
+
+<Tabs>
+  <Tab title="Model Loading">
+    SD 1.x/SDXL loads a single checkpoint. Flux.1 requires three separate files:
+    - Main model (`flux1-dev.safetensors` or similar)
+    - VAE (`ae.safetensors`)
+    - CLIP-L (`clip_l.safetensors`)
+    - T5-XXL (`t5xxl_fp16.safetensors` or `t5xxl_fp8_e4m3fn.safetensors`)
+
+    Specify each path in the dedicated fields in the Flux.1 accordion.
+  </Tab>
+
+  <Tab title="Architecture">
+    SD 1.x/SDXL uses a U-Net with attention blocks. Flux.1 uses **19 double blocks** (joint image-text attention) and **38 single blocks** (image-only processing). LoRA targets these blocks rather than U-Net attention layers.
+  </Tab>
+
+  <Tab title="Memory">
+    Flux.1 is substantially larger than SDXL. A minimum of 16–24 GB VRAM is typically needed for LoRA training without block swapping. Enable **Split Mode** or configure block swapping (`single_blocks_to_swap`, `double_blocks_to_swap`) to train on lower-VRAM hardware.
+  </Tab>
+</Tabs>
+
+## Quick Start: Flux.1 LoRA
+
+<Steps>
+  <Step title="Enable the Flux.1 checkbox">
+    In the **Source model** section, check **Flux.1**. The Flux.1 accordion will appear with the three model path fields.
+  </Step>
+  <Step title="Fill in model paths">
+    Provide absolute paths to the main model, VAE, CLIP-L, and T5-XXL files.
+  </Step>
+  <Step title="Configure block training">
+    Leave **Train Blocks** set to `all` for best quality. If VRAM is limited, set to `double` to skip the 38 single blocks.
+  </Step>
+  <Step title="Set network rank and alpha">
+    For Flux.1 LoRA, start with `rank=16, alpha=8`. The per-layer rank fields can be left blank to use this global value.
+  </Step>
+  <Step title="Start training">
+    Configure dataset, output folder, optimizer (Adafactor recommended), and click **Start training**.
+  </Step>
+</Steps>
+
+<Warning>
+  Flux.1 and SD3 support was introduced in v25.0.0 and represents a significant departure from prior versions. Refer to the [sd-scripts SD3/Flux README](https://github.com/kohya-ss/sd-scripts/blob/sd3/README.md) for the authoritative list of supported parameters and any breaking changes.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="LoRA Training" href="/training/lora">
+    General LoRA guide covering SD 1.x and SDXL
+  </Card>
+  <Card title="SDXL Training" href="/training/sdxl">
+    SDXL-specific memory and optimizer guidance
+  </Card>
+</CardGroup>

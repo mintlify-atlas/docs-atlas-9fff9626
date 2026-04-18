@@ -1,0 +1,191 @@
+---
+title: "DreamBooth Training: Teach the Model a New Subject"
+description: "Train DreamBooth in Kohya's GUI. Covers Class+Identifier and Captioning methods, regularization images, dataset .toml config, and key training parameters."
+---
+
+DreamBooth training updates the **entire model** (not just adapter weights) by fine-tuning it on a small set of images of a specific subject. Where LoRA produces a lightweight plugin, DreamBooth produces a fully updated checkpoint that permanently incorporates the subject. This makes DreamBooth better suited for learning subjects that require deep model-level changes, such as a specific person's face or a distinctive object, at the cost of a larger output file.
+
+Kohya's GUI runs DreamBooth via `train_db.py`. Two dataset preparation methods are supported: **Class+Identifier** (no caption files required) and **Captioning** (per-image `.caption` files).
+
+## Method Comparison
+
+<Tabs>
+  <Tab title="Class+Identifier">
+    Each image is implicitly captioned as `<identifier> <class>` — for example `shs dog`. No caption files are needed. The identifier anchors the subject; the class keeps the broader concept intact.
+
+    **Best for:** Quick experiments, characters, or objects where you don't want to write per-image captions.
+
+    **Limitation:** Because hairstyle, clothing, and background are all associated with the identifier, the model may reproduce them even when they shouldn't appear.
+  </Tab>
+
+  <Tab title="Captioning">
+    Place a `.caption` (or `.txt`) file alongside each image. The caption describes the image precisely — e.g. `shs girl wearing a red jacket, standing in a park`. The model learns the subject more cleanly because unrelated elements are captured in text rather than baked into the identifier.
+
+    **Best for:** Characters where you need fine-grained control over clothing, pose, and context.
+  </Tab>
+</Tabs>
+
+## Step-by-Step: Class+Identifier Method
+
+<Steps>
+  <Step title="Choose an identifier and class">
+    Pick a rare word (3 characters or fewer, tokenises to a single token) as the **identifier** — e.g. `shs`, `sts`, `cpc`. Choose a **class** that broadly describes the subject — e.g. `dog`, `1girl`, `car`.
+
+    Training images will be captioned internally as `shs dog`. After training, use `shs dog` in your prompt to generate the learned subject.
+
+    <Tip>
+      Avoid identifiers that already appear in Danbooru tags. Examples that work well: `shs`, `sts`, `scs`, `cpc`, `coc`, `msm`, `ori`.
+    </Tip>
+  </Step>
+
+  <Step title="Prepare regularization images">
+    Regularization images represent the general class (e.g. plain `dog` images) and prevent the model from associating the class concept too strongly with your specific subject — a problem called **language drift**.
+
+    Generate ~100 images from the base model using only the class name as the prompt (e.g. `dog`). Higher-quality regularization images lead to better training outcomes.
+
+    <Note>
+      Around 100 regularization images is the recommended minimum for sufficient class diversity. Generate them at the same resolution you will train at.
+    </Note>
+  </Step>
+
+  <Step title="Write the dataset configuration file">
+    Create a `.toml` file describing your folders, class tokens, and repeat counts:
+
+    ```toml
+    [general]
+    enable_bucket = true                  # Aspect Ratio Bucketing
+
+    [[datasets]]
+    resolution = 512                      # Training resolution
+    batch_size = 4
+
+      [[datasets.subsets]]
+      image_dir = 'C:\\training_images'   # Folder with subject images
+      class_tokens = 'shs dog'            # identifier + class
+      num_repeats = 10                    # Repeat subject images
+
+      # Regularization subset (optional but recommended)
+      [[datasets.subsets]]
+      is_reg = true
+      image_dir = 'C:\\reg_images'        # Folder with regularization images
+      class_tokens = 'dog'               # Class only
+      num_repeats = 1
+    ```
+
+    The repeat counts should satisfy: `num_repeats_subject × count_subject ≥ num_repeats_reg × count_reg`. Surplus regularization images are not used.
+  </Step>
+
+  <Step title="Configure training parameters">
+    In the GUI, set:
+    - **Pretrained model** — your base checkpoint
+    - **Train data directory** — parent folder containing the subject subfolder
+    - **Regularization directory** — parent folder containing the regularization subfolder
+    - **Dataset config** — path to the `.toml` file created above
+    - **Resolution**, **batch size**, **epochs**, **learning rate**
+  </Step>
+
+  <Step title="Start training">
+    Click **Start training**. DreamBooth training takes longer than LoRA because the full U-Net and (optionally) text encoder weights are updated. Monitor the log for loss convergence and use the sample image output feature to check quality.
+  </Step>
+</Steps>
+
+## Step-by-Step: Captioning Method
+
+<Steps>
+  <Step title="Prepare per-image caption files">
+    Place a `.caption` file (UTF-8, one line) beside each training image with the same base name:
+
+    ```
+    training_images/
+      photo_001.jpg
+      photo_001.caption   → "shs girl wearing a red jacket, standing outdoors"
+      photo_002.jpg
+      photo_002.caption   → "shs girl sitting at a desk, close-up portrait"
+    ```
+
+    You can use a different extension (e.g. `.txt`) — just set **Caption extension** in the GUI to match.
+  </Step>
+
+  <Step title="Decide on regularization images">
+    Same process as the Class+Identifier method. You can also add captions to regularization images, though this is usually not necessary.
+  </Step>
+
+  <Step title="Write the dataset configuration file">
+    ```toml
+    [general]
+    enable_bucket = true
+
+    [[datasets]]
+    resolution = 512
+    batch_size = 4
+
+      [[datasets.subsets]]
+      image_dir = 'C:\\training_images'
+      caption_extension = '.caption'
+      num_repeats = 10
+
+      [[datasets.subsets]]
+      is_reg = true
+      image_dir = 'C:\\reg_images'
+      class_tokens = 'girl'
+      num_repeats = 1
+    ```
+
+    The folder name is no longer used as the caption source — only the `.caption` files are read.
+  </Step>
+
+  <Step title="Train">
+    Configure and start training as in the Class+Identifier method. The captioning approach typically produces cleaner subject isolation, especially if your captions include varied context descriptions.
+  </Step>
+</Steps>
+
+## Key Parameters
+
+<AccordionGroup>
+  <Accordion title="num_repeats">
+    How many times each image is seen per epoch. Because training datasets for DreamBooth are small (typically 10–30 images), repeating images raises the effective step count. A common value is 10–20 for subject images and 1 for regularization images.
+  </Accordion>
+
+  <Accordion title="Resolution">
+    The resolution at which images are processed. Use `512` for SD 1.x models and `768` for SD 2.x models. Specify a single integer for square images (`512`) or two integers for rectangular (`512,768`). Enable **buckets** to handle mixed aspect ratios without distorting images.
+  </Accordion>
+
+  <Accordion title="Batch size">
+    Number of images processed simultaneously. Each image in a batch must be the same size (bucketing handles this). A batch size of 1 or 2 is typical for DreamBooth on 8–12 GB VRAM.
+  </Accordion>
+
+  <Accordion title="Learning rate">
+    DreamBooth updates the full model, so the learning rate is typically lower than for LoRA — around `1e-6` to `5e-6` for U-Net. The text encoder rate (`--learning_rate_te`) is usually set lower or disabled entirely.
+  </Accordion>
+
+  <Accordion title="Prior loss weight">
+    Controls how much weight regularization images receive during training. A value of 1 (default) gives regularization images equal importance. Lowering this biases the model more heavily toward the subject images.
+  </Accordion>
+</AccordionGroup>
+
+## Multiple Subjects
+
+Training multiple subjects simultaneously is supported by creating one subfolder per subject inside the training data directory:
+
+```
+train_data/
+  10_shs 1girl/    ← Character A
+  10_cpc 1girl/    ← Character B
+reg_data/
+  1_1girl/         ← Shared regularization
+```
+
+With a single class but multiple identifiers, one regularization folder is sufficient.
+
+<Warning>
+  DreamBooth outputs are full model checkpoints (2–7 GB). Ensure you have enough disk space before starting training, especially when saving every N epochs.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="LoRA Training" href="/training/lora">
+    Lightweight alternative to DreamBooth
+  </Card>
+  <Card title="Fine-Tuning" href="/training/finetuning">
+    Full model fine-tuning with metadata files
+  </Card>
+</CardGroup>

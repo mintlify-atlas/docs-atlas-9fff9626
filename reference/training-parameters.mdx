@@ -1,0 +1,315 @@
+---
+title: "Training Parameters Reference Guide for Kohya's GUI"
+description: "Every training parameter in Kohya's GUI, organized by category with defaults, accepted values, and guidance for LoRA, DreamBooth, and fine-tuning."
+---
+
+Kohya's GUI exposes dozens of parameters that control how your LoRA or DreamBooth model is trained. This page documents every parameter organized by category — from basic batch settings to advanced noise and augmentation options — so you can make deliberate choices rather than relying solely on defaults.
+
+<Note>
+  Default values listed here match the kohya\_ss source. Changing a parameter from its default always carries a tradeoff; read the guidance for each before adjusting.
+</Note>
+
+<AccordionGroup>
+
+  <Accordion title="Basic training parameters">
+
+    <ParamField body="LoRA type" type="select" default="Standard">
+      Selects the LoRA network architecture.
+
+      | Value | Description |
+      |-------|-------------|
+      | `Standard` | Classic LoRA — one small neural net per target layer. Best starting point. |
+      | `DyLoRA` | Trains multiple ranks simultaneously (up to the specified rank), making it easier to find an optimal rank without retraining. |
+      | `LoHa` | Hadamard product-based LoRA, more parameter-efficient for the same rank. |
+      | `LoCon` | Extends LoRA to U-Net Res blocks in addition to Attention blocks for broader coverage. |
+
+      Start with `Standard`. Switch to another type only when you have a specific reason, such as needing rank flexibility (`DyLoRA`) or broader U-Net coverage (`LoCon`).
+    </ParamField>
+
+    <ParamField body="LoRA network weights" type="string">
+      Path to an existing `.safetensors` or `.pt` LoRA file to use as the starting point for additional training. The source file is never overwritten — the newly trained LoRA is saved separately. Leave blank to start from scratch.
+    </ParamField>
+
+    <ParamField body="DIM from weights" type="boolean" default="false">
+      When **LoRA network weights** is set, enabling this option forces the new LoRA's rank to match the rank of the loaded LoRA file. Overrides the **Network Rank (Dimension)** field. Useful when continuing training on a LoRA whose original rank you want to preserve.
+    </ParamField>
+
+    <ParamField body="Train batch size" type="integer" default="1">
+      Number of images processed in a single forward/backward pass.
+
+      - Higher values reduce training time but consume more VRAM and may reduce per-image accuracy.
+      - On 6 GB VRAM, a batch size of 2 is typically the practical ceiling.
+      - When increasing batch size, consider proportionally increasing the learning rate (e.g., doubling batch size → doubling learning rate).
+
+      <Warning>
+        All images in a batch must share the same resolution. With bucketing enabled, the effective batch size per step may be lower than specified when images fall into different buckets.
+      </Warning>
+    </ParamField>
+
+    <ParamField body="Epoch" type="integer">
+      Total number of full passes through your training dataset. One epoch equals processing every image once (multiplied by the repetition count). For LoRA, 2–3 epochs is often sufficient; DreamBooth may need more depending on dataset size.
+    </ParamField>
+
+    <ParamField body="Save every N epochs" type="integer">
+      Saves an intermediate LoRA checkpoint at the end of every N-th epoch. For example, with `Epoch = 10` and `Save every N epochs = 2`, checkpoints are written at epochs 2, 4, 6, and 8. Set to the same value as **Epoch** if you only want the final checkpoint.
+    </ParamField>
+
+    <ParamField body="Caption extension" type="string" default=".caption">
+      File extension of the caption files paired with your training images. Change to `.txt` if your captions use that extension. Leave blank to use the default `.caption`. Ignored if no caption files are present.
+    </ParamField>
+
+    <ParamField body="Mixed precision" type="select" default="fp16">
+      Data precision used during the training forward/backward pass.
+
+      | Value | Description |
+      |-------|-------------|
+      | `no` | Full 32-bit precision. Highest accuracy, highest VRAM usage. |
+      | `fp16` | 16-bit float. Halves VRAM usage with negligible quality loss for most LoRAs. |
+      | `bf16` | Brain-float 16-bit. Same range as 32-bit but half the precision. Requires RTX 30 series or newer. |
+
+      `fp16` is the recommended default for most hardware.
+    </ParamField>
+
+    <ParamField body="Save precision" type="select" default="fp16">
+      Precision used when writing the LoRA weights to disk.
+
+      | Value | File size | Notes |
+      |-------|-----------|-------|
+      | `float` | Largest | Full 32-bit weights |
+      | `fp16` | ~Half | Standard; sufficient for inference |
+      | `bf16` | ~Half | Same size as fp16, different format |
+
+      `fp16` produces the smallest usable file and is the standard distribution format.
+    </ParamField>
+
+    <ParamField body="Number of CPU threads per core" type="integer" default="2">
+      Number of threads allocated per CPU core for data preprocessing. Higher values can improve throughput on multi-core CPUs, but excessive values may cause context-switching overhead. Adjust based on your CPU specifications.
+    </ParamField>
+
+    <ParamField body="Seed" type="integer">
+      Random seed for reproducible training runs. Controls the order in which images are loaded and the noise applied during training. Leave blank to let the system assign a random seed each run. Setting a fixed value (e.g., `1234`) makes results easier to reproduce, though some processes (such as random crop) are unaffected by this seed.
+    </ParamField>
+
+    <ParamField body="Cache latents" type="boolean" default="true">
+      Compresses training images into their latent representations once and stores them in RAM rather than recomputing on every step. Reduces VRAM usage and speeds up training.
+
+      <Warning>
+        When cache latents is enabled, color augmentation and random crop are unavailable. Only flip augmentation remains usable.
+      </Warning>
+    </ParamField>
+
+    <ParamField body="Cache latents to disk" type="boolean" default="false">
+      Extends **Cache latents** by writing the compressed latent files to disk rather than keeping them in RAM. Latent cache files are reused across sessions, making this useful when repeatedly training on the same dataset. Carries the same augmentation restrictions as **Cache latents**.
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Learning rate parameters">
+
+    <ParamField body="Learning rate" type="number" default="0.0001">
+      Global learning rate applied when no per-component rates are set. Controls how much the network weights shift after each training step. Too high and training destabilizes; too low and training stalls or takes much longer.
+
+      The `0.0001` default is a conservative starting point for AdamW8bit. Adafactor ignores this field when `relative_step=True`.
+    </ParamField>
+
+    <ParamField body="LR Scheduler" type="select" default="cosine">
+      Controls how the learning rate changes over the course of training.
+
+      | Scheduler | Behavior |
+      |-----------|----------|
+      | `cosine` | Gradually decreases following a cosine curve toward 0. |
+      | `cosine_with_restarts` | Repeats the cosine decay cycle N times (see **LR number of cycles**). |
+      | `linear` | Decreases linearly from the initial rate to 0. |
+      | `polynomial` | Similar to linear but with a configurable decay shape (see **LR power**). |
+      | `constant` | Holds the learning rate fixed throughout training. |
+      | `constant_with_warmup` | Starts at 0, ramps up to the target rate during warmup, then holds constant. |
+
+      `cosine` is a solid default for most LoRA training.
+    </ParamField>
+
+    <ParamField body="LR warmup" type="integer" default="10">
+      Percentage of total training steps used for learning rate warmup. Only applies when **LR Scheduler** is set to `constant_with_warmup`. For example, with 1000 total steps and warmup of 10, the learning rate ramps from 0 to the target value over the first 100 steps.
+    </ParamField>
+
+    <ParamField body="Optimizer" type="select" default="AdamW8bit">
+      Algorithm used to update network weights during training.
+
+      | Optimizer | Notes |
+      |-----------|-------|
+      | `AdamW8bit` | 8-bit quantized Adam. Default; low VRAM usage, reliable accuracy. |
+      | `AdamW` | Standard 32-bit Adam. More memory than AdamW8bit. |
+      | `Adafactor` | Auto-adjusts learning rate; ignores the **Learning rate** field when `relative_step=True`. |
+      | `Lion` | Newer optimizer; not yet fully benchmarked for LoRA. |
+      | `DAdaptation` | Self-adapting learning rate. Set learning rate to `1.0` when using. |
+      | `Prodigy` | Self-adapting; similar to DAdaptation. |
+      | `SGDNesterov` | High accuracy reports but noticeably slower throughput. |
+
+      `AdamW8bit` is the recommended starting point.
+    </ParamField>
+
+    <ParamField body="Text Encoder learning rate" type="number" default="0.00005">
+      Learning rate applied specifically to the text encoder component. Because text encoder updates affect all U-Net attention blocks globally, this rate is typically kept lower than the U-Net rate. When specified, overrides the global **Learning rate** for the text encoder. Expressed as `5e-5` by default.
+    </ParamField>
+
+    <ParamField body="Unet learning rate" type="number" default="0.0001">
+      Learning rate applied to the U-Net attention (and optionally Res) blocks. When specified, overrides the global **Learning rate** for U-Net. The default `0.0001` is twice the text encoder rate, which reflects the typical relationship.
+    </ParamField>
+
+    <ParamField body="LR number of cycles" type="integer" default="1">
+      Number of times the scheduler cycle repeats within the total training run. Only applies to `cosine_with_restarts` and `polynomial` schedulers. With `cosine_with_restarts` and 4 cycles, the cosine decay resets 4 times, allowing the learning rate to reach 0 and restart multiple times within a single training job.
+    </ParamField>
+
+    <ParamField body="LR power" type="number" default="1">
+      Exponent controlling the steepness of the learning rate decay curve. Only applies to the `polynomial` scheduler. A value of `1` produces the same shape as `linear`. Higher values make the rate drop more steeply early in training. Avoid very large values, which can leave the learning rate near 0 for most of the run.
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Network parameters">
+
+    <ParamField body="Network Rank (Dimension)" type="integer" default="8">
+      The number of neurons in the hidden layer of each LoRA small network added to the model. Higher rank = more information capacity = larger file size and increased overfitting risk.
+
+      - Ranks of 2–8 are good for quick experimentation.
+      - Ranks of 16–32 cover most practical use cases.
+      - Ranks above 64 are rarely necessary and increase VRAM usage.
+
+      When **DIM from weights** is enabled, this field is ignored and the rank is taken from the loaded LoRA file.
+    </ParamField>
+
+    <ParamField body="Network Alpha" type="number" default="1">
+      Scaling factor that controls how strongly the LoRA weights are applied during training. The effective learning strength is computed as `Network Alpha / Network Rank`. A value of `1` (default) maximizes the stored weight values.
+
+      - Setting Alpha equal to Rank disables the scaling effect.
+      - Alpha must not exceed Rank; exceeding it produces unintended results.
+      - If the trained LoRA has collapsed weights, lowering Alpha (increasing saved weight magnitude) can help.
+
+      <Tip>
+        A common starting configuration is `Rank = 32, Alpha = 16`, which halves the effective learning rate contribution from the LoRA weights.
+      </Tip>
+    </ParamField>
+
+    <ParamField body="Max resolution" type="string" default="512,512">
+      Maximum image resolution in `width,height` format. Training images larger than this are scaled down to fit. SD1.x models were trained at 512×512; SD2.x and SDXL models use higher resolutions (768×768 or 1024×1024). Adjust this to match the base model you are training against.
+    </ParamField>
+
+    <ParamField body="Stop text encoder training" type="integer" default="0">
+      Percentage of total training steps at which text encoder training is halted. U-Net training continues for the remaining steps. Because text encoder updates affect all attention blocks, stopping early prevents the encoder from overfitting to your training images.
+
+      Setting `0` (default) trains the text encoder for the full duration. A value of `80` stops text encoder updates after 80% of steps.
+    </ParamField>
+
+    <ParamField body="Enable buckets" type="boolean" default="true">
+      Groups training images of similar aspect ratios into "buckets" so that differently sized images can be trained together without forcing all images to the same resolution. Images within a bucket are padded or cropped to a common size; the common size differs per bucket.
+
+      Leave enabled unless all your training images are exactly the same resolution. Disabling it when images have varying sizes causes all images to be scaled to a single resolution, potentially distorting aspect ratios.
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Advanced parameters">
+
+    <ParamField body="Gradient accumulation steps" type="integer" default="1">
+      Number of batches to accumulate gradients across before performing a weight update. Produces a similar effect to increasing batch size without the additional VRAM cost, though the effect is not mathematically identical.
+
+      With `batch size = 4` and `gradient accumulation steps = 2`, a weight update occurs once every 8 images loaded. This approximates (but does not exactly replicate) `batch size = 8`.
+    </ParamField>
+
+    <ParamField body="Gradient checkpointing" type="boolean" default="false">
+      Recalculates intermediate activations during the backward pass rather than storing them, trading compute time for VRAM savings. Does not affect the quality of the trained LoRA. Enables larger effective batch sizes on memory-constrained hardware at the cost of slower training speed.
+    </ParamField>
+
+    <ParamField body="Weighted captions" type="boolean" default="false">
+      Enables Automatic1111-style caption weighting syntax in training captions. Use `(word:1.3)` to emphasize tokens or `[word]` to de-emphasize them. Nesting is supported. Do not include commas inside weighted parentheses, as this conflicts with caption shuffle/dropout.
+    </ParamField>
+
+    <ParamField body="Shuffle caption" type="boolean" default="false">
+      Randomly reorders comma-separated tokens in the caption each time an image is loaded. Prevents the model from over-associating tokens that always appear in the same position (since earlier tokens carry more weight). Has no effect if captions are written as sentences rather than comma-separated tags.
+    </ParamField>
+
+    <ParamField body="Clip skip" type="integer">
+      Which CLIP layer output to use for the text encoder. A value of `1` uses the last layer; `2` uses the second-to-last (penultimate) layer. Novel AI-derived models were trained with the penultimate layer, so those models should use `2`. Most other models use `1`.
+    </ParamField>
+
+    <ParamField body="Max Token Length" type="select" default="75">
+      Maximum number of tokens the text encoder processes from each caption. Accepts `75`, `150`, or `225`. The default of `75` matches the base CLIP token limit. Increase only when your captions are very long and you confirm the base model supports extended token lengths. Note that the Automatic1111 WebUI handles token extension differently.
+    </ParamField>
+
+    <ParamField body="Noise offset type" type="select" default="Original">
+      Method used to add supplemental noise to training images.
+
+      | Value | Description |
+      |-------|-------------|
+      | `Original` | Adds a uniform offset noise across the image. Controlled by **Noise offset**. |
+      | `Multires` | Adds pyramid-structured noise at multiple resolutions. Controlled by **Multires noise iterations** and **Multires noise discount**. |
+    </ParamField>
+
+    <ParamField body="Noise offset" type="number" default="0">
+      Strength of additional noise added when **Noise offset type** is `Original`. Range 0–1. A value around `0.1` has been reported to improve vibrancy and contrast in generated images. `0` disables additional noise.
+    </ParamField>
+
+    <ParamField body="Min SNR gamma" type="number" default="0">
+      Min-SNR Weighting Strategy parameter. Stabilizes training by preventing large gradient updates from low-noise timesteps. Range 0–20. The original paper recommends a value of `5`. Leave at `0` (disabled) unless your training results are unstable.
+    </ParamField>
+
+    <ParamField body="Memory efficient attention" type="boolean" default="false">
+      Uses a memory-efficient attention implementation instead of the standard one. Reduces VRAM usage but is slower than xformers. Enable if you do not have xformers installed or if xformers is incompatible with your configuration.
+    </ParamField>
+
+    <ParamField body="Use xformers" type="boolean" default="true">
+      Enables xformers' CrossAttention implementation, which reduces VRAM usage with minimal speed penalty. Recommended when xformers is available. Disable if you encounter xformers-related errors (e.g., when using `mixed_precision=no`).
+    </ParamField>
+
+    <ParamField body="Color augmentation" type="boolean" default="false">
+      Randomly shifts the hue of training images on each load, artificially increasing color diversity in the training data. Produces LoRAs that generalize better across color variations. Cannot be used when **Cache latents** is enabled.
+    </ParamField>
+
+    <ParamField body="Flip augmentation" type="boolean" default="false">
+      Randomly flips training images horizontally on each load. Useful for subjects that are approximately symmetrical (e.g., people, animals, objects). Compatible with **Cache latents**, unlike color augmentation.
+    </ParamField>
+
+    <ParamField body="VAE batch size" type="integer" default="0">
+      Batch size used when encoding images to latents via the VAE during the cache latents step. `0` uses the same value as **Train batch size**. Adjust independently only if the VAE encoding step is causing memory issues separate from the training batch.
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Sample images config">
+
+    Kohya's GUI can generate sample images at intervals during training so you can monitor progress without waiting for the run to complete. Configure these options in the **Sample images config** section.
+
+    <ParamField body="Sample every N steps" type="integer" default="0">
+      Generate a sample image every N training steps. `0` disables step-based sampling. For example, `100` generates a sample every 100 steps. Useful for long runs where epoch boundaries are infrequent.
+    </ParamField>
+
+    <ParamField body="Sample every N epochs" type="integer" default="0">
+      Generate a sample image at the end of every N epochs. `0` disables epoch-based sampling. Takes precedence over **Sample every N steps** when both are set.
+    </ParamField>
+
+    <ParamField body="Sample sampler" type="select" default="euler_a">
+      Sampler used for sample image generation during training. Accepts the same sampler names as the Stable Diffusion WebUI, including `ddim`, `pndm`, `heun`, `dpmsolver`, `dpmsolver++`, `dpmsingle`, `k_lms`, `k_euler`, `k_euler_a`, `k_dpm_2`, and `k_dpm_2_a`. `euler_a` is a fast, reliable default.
+    </ParamField>
+
+    <ParamField body="Sample prompts" type="text">
+      Prompts used for sample image generation. Write one prompt per line. Lines beginning with `#` are treated as comments. Inline options can be appended to each prompt:
+
+      | Option | Description |
+      |--------|-------------|
+      | `--n` | Negative prompt (everything after this flag until the next option) |
+      | `--w` | Image width in pixels |
+      | `--h` | Image height in pixels |
+      | `--d` | Random seed |
+      | `--l` | CFG scale |
+      | `--s` | Number of inference steps |
+
+      **Example:**
+
+      ```text
+      # Portrait sample
+      masterpiece, best quality, 1girl, white shirt, looking at viewer --n low quality, worst quality, bad anatomy --w 512 --h 512 --d 42 --l 7.5 --s 28
+      ```
+    </ParamField>
+
+  </Accordion>
+
+</AccordionGroup>

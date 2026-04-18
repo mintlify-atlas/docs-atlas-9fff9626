@@ -1,0 +1,272 @@
+---
+title: "Kohya's GUI Server Launch Arguments and CLI Reference"
+description: "All command-line arguments for kohya_gui.py and its launchers, with examples for headless, authenticated, and reverse-proxy deployments."
+---
+
+Kohya's GUI is a Gradio application launched via `kohya_gui.py` (or the convenience wrappers `gui-uv.sh` on Linux and `gui-uv.bat` on Windows). Every argument you pass on the command line controls network binding, authentication, browser behavior, hardware back-ends, and requirements checking. This page documents all available arguments and shows common deployment patterns.
+
+<Note>
+  All arguments apply equally to the `gui-uv.sh` / `gui-uv.bat` wrappers and to calling `kohya_gui.py` directly. The wrappers forward every argument to the Python script after bootstrapping the `uv` environment.
+</Note>
+
+## Quick reference
+
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--config` | `string` | `./config.toml` | Path to a TOML file with GUI defaults |
+| `--debug` | flag | off | Enable debug logging |
+| `--listen` | `string` | `127.0.0.1` | IP address Gradio listens on |
+| `--username` | `string` | _(none)_ | Username for HTTP basic authentication |
+| `--password` | `string` | _(none)_ | Password for HTTP basic authentication |
+| `--server_port` | `integer` | `0` (auto) | Port number for the Gradio server |
+| `--inbrowser` | flag | off | Open the GUI in the default browser on launch |
+| `--share` | flag | off | Generate a public Gradio share URL |
+| `--headless` | flag | off | Run without a local display (server mode) |
+| `--language` | `string` | _(none)_ | Override UI language |
+| `--use-ipex` | flag | off | Enable Intel XPU (IPEX) environment |
+| `--use-rocm` | flag | off | Enable AMD ROCm environment |
+| `--do_not_use_shell` | flag | off | Disable `shell=True` for subprocess calls |
+| `--do_not_share` | flag | off | Prevent the `--share` flag from working |
+| `--requirements` | `string` | _(none)_ | Path to an alternative requirements file |
+| `--root_path` | `string` | _(none)_ | URL prefix for reverse proxy support |
+| `--noverify` | flag | off | Skip requirements verification on startup |
+
+---
+
+## Detailed parameter reference
+
+<AccordionGroup>
+
+  <Accordion title="Configuration and debugging">
+
+    <ParamField query="--config" type="string" default="./config.toml">
+      Path to a TOML configuration file that pre-populates GUI field defaults. If the file does not exist, the GUI starts with built-in defaults and no error is raised.
+
+      The TOML file supports keys such as `model_dir`, `lora_model_dir`, `output_dir`, and per-tab path prefixes like `db_model_dir` or `lc_output_dir`. See the bundled `config example.toml` for the full list of keys.
+
+      ```bash
+      ./gui-uv.sh --config /home/user/my-kohya-config.toml
+      ```
+    </ParamField>
+
+    <ParamField query="--debug" type="boolean">
+      Enables verbose debug logging to the console. Useful for diagnosing startup failures, subprocess errors, or unexpected GUI behavior. Gradio's own debug mode is also activated when this flag is set.
+
+      ```bash
+      ./gui-uv.sh --debug
+      ```
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Network and server options">
+
+    <ParamField query="--listen" type="string" default="127.0.0.1">
+      The IP address the Gradio server binds to. The default `127.0.0.1` restricts access to the local machine. Use `0.0.0.0` to accept connections from any network interface (required for remote access or multi-user setups).
+
+      <Warning>
+        Binding to `0.0.0.0` exposes the GUI to your local network. Always combine with `--username` and `--password` when doing so.
+      </Warning>
+
+      ```bash
+      ./gui-uv.sh --listen 0.0.0.0 --server_port 7860
+      ```
+    </ParamField>
+
+    <ParamField query="--server_port" type="integer" default="0">
+      The TCP port the Gradio server listens on. When `0` (default), Gradio selects an available port automatically, typically `7860`. Specify an explicit port when running multiple instances or when your firewall requires a fixed port.
+
+      ```bash
+      ./gui-uv.sh --server_port 7861
+      ```
+    </ParamField>
+
+    <ParamField query="--share" type="boolean">
+      When set, Gradio creates a temporary public URL (e.g., `https://xxxxxxxx.gradio.live`) that tunnels traffic to your local instance. Useful for sharing access without configuring a reverse proxy. URLs expire after 72 hours.
+
+      <Warning>
+        Public share URLs bypass your local firewall. Anyone with the URL can access your GUI. Use `--username` / `--password` when sharing externally.
+      </Warning>
+    </ParamField>
+
+    <ParamField query="--do_not_share" type="boolean">
+      Hard-disables the `--share` flag, even if it is passed. Useful in deployment scripts or Docker images where you want to guarantee the GUI never creates a public tunnel regardless of other arguments.
+    </ParamField>
+
+    <ParamField query="--root_path" type="string">
+      Sets the `root_path` parameter passed to Gradio, which tells the application it is mounted at a URL subpath rather than at the domain root. Required when serving Kohya's GUI through a reverse proxy under a path prefix.
+
+      ```bash
+      # Accessible at https://example.com/kohya_ss
+      ./gui-uv.sh --root_path /kohya_ss --listen 127.0.0.1 --server_port 7860
+      ```
+    </ParamField>
+
+    <ParamField query="--inbrowser" type="boolean">
+      Instructs Gradio to open the GUI in the system's default web browser automatically after the server starts. On headless servers (no display) this flag has no effect and should be omitted.
+    </ParamField>
+
+    <ParamField query="--headless" type="boolean">
+      Signals that the server has no local display attached. Prevents the GUI from attempting to open a browser window and suppresses display-related errors. Always set this flag when running on a remote server or in a container.
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Authentication">
+
+    <ParamField query="--username" type="string">
+      Username for HTTP basic authentication. When both `--username` and `--password` are provided, Gradio prompts for credentials before allowing access to the GUI. If either is omitted, authentication is disabled.
+
+      ```bash
+      ./gui-uv.sh --username admin --password s3cr3t --listen 0.0.0.0
+      ```
+    </ParamField>
+
+    <ParamField query="--password" type="string">
+      Password for HTTP basic authentication. Must be paired with `--username`. Avoid passing passwords directly on the command line in shared environments; consider using a wrapper script or an environment variable.
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Hardware back-ends">
+
+    <ParamField query="--use-ipex" type="boolean">
+      Activates the Intel Extension for PyTorch (IPEX) environment, enabling training on Intel Arc and Intel Data Center GPUs via Intel XPU. Requires IPEX to be installed in your environment.
+    </ParamField>
+
+    <ParamField query="--use-rocm" type="boolean">
+      Activates the AMD ROCm environment for training on AMD GPUs. Requires ROCm-compatible PyTorch to be installed. Not required on NVIDIA hardware.
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Subprocess and requirements">
+
+    <ParamField query="--do_not_use_shell" type="boolean">
+      Forces all external subprocess calls (e.g., running training scripts) to use `shell=False`. By default the GUI runs subprocesses with `shell=True` for compatibility with Windows environments and complex command strings. Set this flag in environments where shell injection is a concern.
+    </ParamField>
+
+    <ParamField query="--requirements" type="string">
+      Path to a custom `requirements.txt` file used during startup requirements verification. Overrides the default requirements file bundled with Kohya's GUI. Useful when you have pinned specific package versions or added extra dependencies.
+    </ParamField>
+
+    <ParamField query="--noverify" type="boolean">
+      Skips the requirements verification step that normally runs on every launch. Verification calls `setup/validate_requirements.py` and can be slow or fail in air-gapped environments.
+
+      <Warning>
+        Skipping verification means outdated or missing packages will not be detected at startup. Training may fail later with cryptic import errors if requirements are not satisfied.
+      </Warning>
+
+      ```bash
+      ./gui-uv.sh --noverify
+      ```
+    </ParamField>
+
+  </Accordion>
+
+  <Accordion title="Localization">
+
+    <ParamField query="--language" type="string">
+      Sets a custom UI language by loading the corresponding JavaScript localization file. The value should match a locale code supported by your installation (e.g., `ja`, `zh-CN`). Defaults to the browser's language when not set.
+    </ParamField>
+
+  </Accordion>
+
+</AccordionGroup>
+
+---
+
+## Common deployment examples
+
+<Tabs>
+  <Tab title="Local development">
+    The default configuration — binds only to localhost, opens the browser automatically:
+
+    ```bash
+    ./gui-uv.sh --inbrowser
+    ```
+
+    With an explicit port:
+
+    ```bash
+    ./gui-uv.sh --server_port 7860 --inbrowser
+    ```
+  </Tab>
+
+  <Tab title="Headless server">
+    Run on a remote server with no attached display. Bind to all interfaces so you can access the GUI from another machine:
+
+    ```bash
+    ./gui-uv.sh \
+      --headless \
+      --listen 0.0.0.0 \
+      --server_port 7860
+    ```
+
+    To keep the process running after you disconnect, use `nohup`:
+
+    ```bash
+    nohup ./gui-uv.sh \
+      --headless \
+      --listen 0.0.0.0 \
+      --server_port 7860 \
+      > kohya.log 2>&1 &
+    ```
+  </Tab>
+
+  <Tab title="Multi-user with authentication">
+    Expose the GUI on the network and require a username/password:
+
+    ```bash
+    ./gui-uv.sh \
+      --listen 0.0.0.0 \
+      --server_port 7860 \
+      --username admin \
+      --password changeme \
+      --headless
+    ```
+
+    To run two independent instances on the same machine (e.g., for two separate users), start them on different ports:
+
+    ```bash
+    # Instance 1
+    nohup ./gui-uv.sh --headless --listen 0.0.0.0 --server_port 7860 > log1.log 2>&1 &
+
+    # Instance 2
+    nohup ./gui-uv.sh --headless --listen 0.0.0.0 --server_port 7861 > log2.log 2>&1 &
+    ```
+  </Tab>
+
+  <Tab title="Reverse proxy">
+    Serve the GUI at a URL subpath behind nginx or another reverse proxy. Pass `--root_path` matching the proxy's location block:
+
+    ```bash
+    ./gui-uv.sh \
+      --headless \
+      --listen 127.0.0.1 \
+      --server_port 7860 \
+      --root_path /kohya_ss
+    ```
+
+    Example nginx location block:
+
+    ```nginx
+    location /kohya_ss/ {
+        proxy_pass http://127.0.0.1:7860/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    ```
+  </Tab>
+
+  <Tab title="Custom config file">
+    Use a project-specific TOML file with pre-set paths and skip slow requirements verification:
+
+    ```bash
+    ./gui-uv.sh \
+      --config /home/user/projects/character-lora/kohya-config.toml \
+      --noverify \
+      --inbrowser
+    ```
+  </Tab>
+</Tabs>

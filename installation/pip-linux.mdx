@@ -1,0 +1,143 @@
+---
+title: "Install Kohya's GUI on Linux or macOS using pip method"
+description: "Traditional pip-based installation for Kohya's GUI on Linux and macOS, with venv and conda options, setup script usage, and upgrade instructions."
+---
+
+The pip method installs Kohya's GUI using a standard Python virtual environment managed by `pip`. It is the recommended path for macOS users and a reliable fallback on Linux when the `uv` method is not suitable. Both `venv` and `conda` environments are supported.
+
+## Prerequisites
+
+- **Python 3.10.9 or higher** (below 3.12)
+- **Git** — Required for cloning the repository and pulling updates
+- **NVIDIA CUDA Toolkit 12.8** — Required for GPU-accelerated training on Linux
+- **NVIDIA GPU** — VRAM requirements vary by training method and model size
+- *(Optional)* **NVIDIA cuDNN** — Improves training throughput and allows larger batch sizes
+
+<Note>
+  CUDA is generally not required and may not be compatible with Apple Silicon GPUs on macOS.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Install Python and Git">
+    On Ubuntu 22.04 or later:
+
+    ```bash
+    sudo apt update
+    sudo apt install python3.11 python3.11-venv git
+    ```
+
+    On macOS, install Python via [python.org](https://www.python.org/downloads/) or Homebrew, and ensure `git` is available.
+  </Step>
+
+  <Step title="Install CUDA 12.8 Toolkit (Linux only)">
+    Download and install from the [NVIDIA CUDA 12.8 archive](https://developer.nvidia.com/cuda-12-8-0-download-archive?target_os=Linux&target_arch=x86_64) following the instructions for your distribution.
+  </Step>
+
+  <Step title="Clone the repository">
+    ```bash
+    git clone --recursive https://github.com/bmaltais/kohya_ss.git
+    cd kohya_ss
+    ```
+
+    The `--recursive` flag ensures all required Git submodules are fetched.
+  </Step>
+
+  <Step title="Run the setup script">
+    Make the script executable, then run it:
+
+    ```bash
+    chmod +x setup.sh
+    ./setup.sh
+    ```
+
+    The setup script creates a virtual environment, installs all dependencies from `pyproject.toml`, and configures [Accelerate](https://github.com/huggingface/accelerate).
+
+    <Tip>
+      Run `./setup.sh --help` to see all available options, including environment-specific flags for Runpod and other configurations.
+    </Tip>
+  </Step>
+
+  <Step title="Launch the GUI">
+    ```bash
+    ./gui.sh --listen 127.0.0.1 --server_port 7860 --inbrowser --share
+    ```
+
+    You can also invoke `kohya_gui.py` directly with the same flags.
+  </Step>
+</Steps>
+
+## Using conda instead of venv
+
+If you prefer Conda over the default `venv`, create and activate a conda environment before running the scripts:
+
+```shell
+# Create and activate the conda environment
+conda create -n kohyass python=3.11
+conda activate kohyass
+
+# Run setup and launch
+chmod +x setup.sh gui.sh
+./setup.sh
+./gui.sh
+```
+
+## Available CLI options
+
+All flags accepted by `gui.sh` (and `kohya_gui.py` directly):
+
+```text
+  --help                show this help message and exit
+  --config CONFIG       Path to the toml config file for interface defaults
+  --debug               Debug on
+  --listen LISTEN       IP to listen on for connections to Gradio
+  --username USERNAME   Username for authentication
+  --password PASSWORD   Password for authentication
+  --server_port SERVER_PORT
+                        Port to run the server listener on
+  --inbrowser           Open in browser
+  --share               Share the gradio UI
+  --headless            Is the server headless
+  --language LANGUAGE   Set custom language
+  --use-ipex            Use IPEX environment
+  --use-rocm            Use ROCm environment
+  --do_not_use_shell    Enforce not to use shell=True when running external commands
+  --do_not_share        Do not share the gradio UI
+  --requirements REQUIREMENTS
+                        requirements file to use for validation
+  --root_path ROOT_PATH
+                        `root_path` for Gradio to enable reverse proxy support. e.g. /kohya_ss
+  --noverify            Disable requirements verification
+```
+
+## Upgrading
+
+Pull the latest code and re-run the setup script to update the environment:
+
+```bash
+git pull
+./setup.sh
+```
+
+## Install location details
+
+The setup script installs in the current directory when possible. If that directory is not writable, it falls back in this order:
+
+1. `/opt/kohya_ss`
+2. `$HOME/kohya_ss`
+3. Current directory (last resort)
+
+On macOS, the fallback default is `$HOME/kohya_ss`.
+
+To force a specific install path:
+
+```bash
+./setup.sh -d /your/custom/path
+```
+
+When completing the interactive Accelerate configuration, use these default values unless your hardware requires otherwise:
+
+- **Machine type:** `This machine`
+- **Compute type:** `None`
+- **All other options:** `No`

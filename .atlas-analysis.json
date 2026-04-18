@@ -1,0 +1,102 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "Kohya's GUI",
+  "projectDescription": "A Gradio-based GUI and CLI for training Stable Diffusion models using LoRA, DreamBooth, fine-tuning, and more, supporting SD1.x, SDXL, Flux.1, and SD3.",
+  "theme": "palm",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation/overview",
+              "installation/linux-uv",
+              "installation/windows-uv",
+              "installation/pip-linux",
+              "installation/pip-windows"
+            ]
+          },
+          {
+            "group": "Cloud & Containers",
+            "pages": [
+              "cloud/runpod",
+              "cloud/novita",
+              "cloud/docker"
+            ]
+          },
+          {
+            "group": "Training Methods",
+            "pages": [
+              "training/lora",
+              "training/dreambooth",
+              "training/finetuning",
+              "training/textual-inversion",
+              "training/sdxl",
+              "training/flux1-sd3"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/config-toml",
+              "configuration/dataset-preparation",
+              "configuration/sample-images",
+              "configuration/accelerate-launch"
+            ]
+          },
+          {
+            "group": "Tools & Utilities",
+            "pages": [
+              "utilities/captioning",
+              "utilities/lora-tools",
+              "utilities/model-conversion"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/training-parameters",
+              "reference/cli-options",
+              "troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Gradio-based web GUI for configuring and launching SD training scripts",
+    "LoRA training with support for Standard, DyLoRA, LoHa, LoCon, LyCORIS variants",
+    "DreamBooth training with class+identifier and captioning methods",
+    "Fine-tuning (full model) with metadata-based dataset configuration",
+    "Textual Inversion (embedding) training",
+    "SDXL, Flux.1, and SD3 model training support",
+    "Multi-platform: Windows, Linux, macOS, Docker, Runpod, Novita, Google Colab",
+    "Automatic captioning with BLIP, BLIP2, WD14Tagger, GIT, and manual tools",
+    "TensorBoard and WandB logging integration",
+    "Sample image generation during training for progress monitoring",
+    "TOML-based config files for reproducible training runs",
+    "Multi-GPU and headless/server mode support via Accelerate"
+  ],
+  "publicApiSurface": [
+    "gui.sh / gui.bat / gui-uv.sh / gui-uv.bat — launch scripts",
+    "kohya_gui.py — main entrypoint with CLI options (--listen, --server_port, --config, --headless, --share, etc.)",
+    "lora_tab() — LoRA training GUI tab",
+    "dreambooth_tab() — DreamBooth training GUI tab",
+    "finetune_tab() — Fine-tuning GUI tab",
+    "ti_tab() — Textual Inversion GUI tab",
+    "utilities_tab() — Utilities GUI tab",
+    "config.toml — user configuration file for default paths and settings",
+    "dataset .toml — dataset configuration for training scripts",
+    "train_network.py (sd-scripts) — underlying LoRA training script",
+    "train_db.py (sd-scripts) — underlying DreamBooth training script",
+    "fine_tune.py (sd-scripts) — underlying fine-tuning script",
+    "train_textual_inversion.py (sd-scripts) — underlying TI training script"
+  ]
+}

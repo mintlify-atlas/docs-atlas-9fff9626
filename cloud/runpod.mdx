@@ -1,0 +1,98 @@
+---
+title: "Run Kohya's GUI on RunPod for On-Demand GPU Training"
+description: "Deploy Kohya's GUI on RunPod using a one-click template or manual SSH setup. Access the interface on HTTP 3010 without local GPU hardware."
+---
+
+RunPod is a GPU cloud platform that lets you rent NVIDIA hardware on demand and run GPU-accelerated workloads without owning physical hardware. It is a popular choice for training Stable Diffusion models because you can spin up a powerful GPU instance in seconds, run a training job, and tear it down when finished — paying only for what you use.
+
+## Pre-built template
+
+The fastest way to get started is with the official RunPod template. It comes pre-configured with all dependencies and exposes the GUI on HTTP port 3010.
+
+<Steps>
+  <Step title="Open the template">
+    Click the link below to open the pre-built RunPod template in your browser:
+
+    ```
+    https://runpod.io/gsc?template=ya6013lj5a&ref=w18gds2n
+    ```
+  </Step>
+  <Step title="Deploy the template">
+    Select a GPU host and click **Deploy**. Wait for the instance to reach a running state.
+  </Step>
+  <Step title="Open the GUI">
+    Once deployed, connect to your RunPod instance on **HTTP 3010** to access the Kohya's GUI.
+
+    You can also reach the auto1111 interface on **HTTP 3000** from the same instance.
+  </Step>
+</Steps>
+
+## Manual installation
+
+If you prefer full control over the installation, you can set up Kohya's GUI manually over SSH.
+
+<Warning>
+  You must select the **RunPod PyTorch 2.2.0** template when creating your pod. Other base templates may not have the correct CUDA environment and will cause setup failures.
+</Warning>
+
+<Steps>
+  <Step title="Create a pod with the PyTorch 2.2.0 template">
+    In the RunPod console, choose the **RunPod PyTorch 2.2.0** template before deploying. This is important — do not use a generic CUDA or Ubuntu template.
+  </Step>
+  <Step title="SSH into your pod">
+    Once the pod is running, open an SSH connection using the credentials or key shown in the RunPod console.
+  </Step>
+  <Step title="Clone the repository">
+    Change to the `/workspace` directory, then clone the repository with submodules:
+
+    ```bash
+    cd /workspace
+    git clone --recursive https://github.com/bmaltais/kohya_ss.git
+    ```
+  </Step>
+  <Step title="Run the setup script">
+    The repository ships a RunPod-specific setup script that installs all Python dependencies into the pod's environment:
+
+    ```bash
+    cd kohya_ss
+    ./setup-runpod.sh
+    ```
+  </Step>
+  <Step title="Start the GUI">
+    Choose the launch command that matches how your pod is configured:
+
+    <CodeGroup>
+
+    ```bash Gradio public share link
+    ./gui.sh --share --headless
+    ```
+
+    ```bash Exposed port 7860
+    ./gui.sh --listen=0.0.0.0 --headless
+    ```
+
+    </CodeGroup>
+
+    Use `--share` when you have not exposed port 7860 through the RunPod network settings. Gradio will print a public `gradio.live` URL you can open in any browser.
+
+    Use `--listen=0.0.0.0` when you have configured RunPod to expose port 7860 directly, so you can connect through the RunPod proxy URL instead.
+  </Step>
+  <Step title="Connect to the GUI">
+    After startup, copy the public URL printed in the terminal and open it in your browser. The GUI is ready when you see the Kohya's GUI web interface.
+  </Step>
+</Steps>
+
+<Note>
+  Training data and model outputs are stored inside the pod's `/workspace` volume, which persists across restarts on the same pod. If you delete the pod, this data is lost. Use RunPod's network volumes or download checkpoints before terminating.
+</Note>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="Docker on RunPod" icon="docker" href="/cloud/docker">
+    Use ashleykleynhans's RunPod Docker builds for a containerized setup.
+  </Card>
+  <Card title="Docker deployment" icon="box" href="/cloud/docker">
+    Run Kohya's GUI in Docker locally or on any Linux host.
+  </Card>
+</CardGroup>

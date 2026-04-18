@@ -1,0 +1,295 @@
+---
+title: 'Prepare Training Image Datasets for LoRA and DreamBooth'
+description: 'Organize images and captions for DreamBooth, LoRA, and fine-tuning. Covers folder naming, caption files, TOML config, and regularization images.'
+---
+
+Before you begin training, you need to organize your images and provide the model with enough context to learn from them. Kohya's GUI supports three distinct dataset organization methods — DreamBooth class+identifier, DreamBooth captioning, and fine-tuning with a metadata JSON — each suited to different goals and levels of dataset preparation effort.
+
+## Supported image formats
+
+Training images may use any of the following formats: `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`.
+
+No preprocessing is required before training. You do not need to manually resize images to match the training resolution — the scripts handle this automatically. However, keep the following in mind:
+
+- Images **larger than the training resolution** are fine; they are downsampled during training.
+- Images of **different aspect ratios** are handled automatically when Aspect Ratio Bucketing (`enable_bucket`) is enabled.
+- Images that are **extremely large** (approximately 3000×3000 pixels or more) should be resized beforehand to avoid out-of-memory errors during preprocessing.
+
+<Tip>
+  If your source images are lower quality, upscaling them with a super-resolution tool before training can noticeably improve results.
+</Tip>
+
+---
+
+## Method 1: DreamBooth — class+identifier (folder naming)
+
+This is the simplest method. Images are associated with a concept by placing them inside a folder whose name encodes the number of repeats, an identifier token, and a class name.
+
+### Folder naming convention
+
+```text
+<repeats>_<identifier> <class>
+```
+
+- **repeats**: How many times the images in this folder are repeated per epoch. A higher number increases the weight of these images relative to regularization images.
+- **identifier**: A short, rare token that the model learns to associate with your subject (e.g., `sls`, `cpc`, `ori`). Choose a word unlikely to appear in normal prompts.
+- **class**: The broad category of your subject (e.g., `dog`, `1girl`, `car`).
+
+### Example folder structure
+
+```text
+images/
+├── 10_sls dog/
+│   ├── photo1.jpg
+│   ├── photo2.jpg
+│   └── photo3.png
+└── 10_cpc cat/
+    ├── photo1.jpg
+    └── photo2.png
+
+regularization/
+├── 1_dog/
+│   ├── reg1.jpg
+│   └── reg2.jpg
+└── 1_cat/
+    ├── reg1.jpg
+    └── reg2.jpg
+```
+
+The **parent** folder (e.g., `images/`) is what you set as `train_data_dir`, not the individual concept subfolders.
+
+### Training multiple subjects simultaneously
+
+Create one subfolder per identifier+class pair. For example, to train two characters at once:
+
+```text
+train_girls/
+├── 10_sls 1girl/     ← Character A
+└── 10_cpc 1girl/     ← Character B
+
+reg_girls/
+└── 1_1girl/          ← Shared regularization for both
+```
+
+### TOML dataset config for class+identifier
+
+```toml
+[general]
+enable_bucket = true                  # Enable Aspect Ratio Bucketing
+
+[[datasets]]
+resolution = 512                      # Training resolution (use 1024 for SDXL)
+batch_size = 4
+
+  [[datasets.subsets]]
+  image_dir = 'C:/training/images'    # Folder containing concept subfolders
+  class_tokens = 'sls dog'            # Identifier + class
+  num_repeats = 10                    # Repeats per epoch for training images
+
+  # Include only if using regularization images
+  [[datasets.subsets]]
+  is_reg = true
+  image_dir = 'C:/training/reg'       # Folder containing regularization subfolders
+  class_tokens = 'dog'                # Class only (no identifier)
+  num_repeats = 1
+```
+
+---
+
+## Method 2: DreamBooth — captioning (sidecar files)
+
+Instead of encoding concept information in folder names, you provide a separate caption file for each image. This allows more nuanced descriptions that help the model distinguish your subject from surrounding elements like clothing, background, and pose.
+
+### Caption file format
+
+Place a `.caption` or `.txt` file alongside each image, sharing the same base filename. Each file contains a single line of text in UTF-8 encoding.
+
+```text
+images/
+├── photo1.jpg
+├── photo1.caption      ← Caption for photo1.jpg
+├── photo2.png
+└── photo2.caption      ← Caption for photo2.png
+```
+
+<Note>
+  If a `.caption` or `.txt` file is present in a subfolder, it takes precedence over the subfolder name for determining the concept used during training. The folder name's identifier and class are ignored for images that have sidecar caption files.
+</Note>
+
+### TOML dataset config for captioning
+
+```toml
+[general]
+enable_bucket = true
+
+[[datasets]]
+resolution = 512
+batch_size = 4
+
+  [[datasets.subsets]]
+  image_dir = 'C:/training/images'
+  caption_extension = '.caption'      # Change to '.txt' if using .txt files
+  num_repeats = 10
+
+  # Include only if using regularization images
+  [[datasets.subsets]]
+  is_reg = true
+  image_dir = 'C:/training/reg'
+  class_tokens = 'dog'
+  num_repeats = 1
+```
+
+---
+
+## Method 3: Fine-tuning (metadata JSON)
+
+The fine-tuning method uses a JSON metadata file that maps image paths to their captions and tags. This approach supports caching latents for faster training and allows captions and tags to be managed independently.
+
+### Metadata file format
+
+The metadata file is a `.json` file where each entry contains the image path and its associated caption. Create it using the `merge_captions_to_metadata.py` or `merge_dd_tags_to_metadata.py` scripts included in the repository.
+
+### TOML dataset config for fine-tuning
+
+```toml
+[general]
+shuffle_caption = true
+keep_tokens = 1
+
+[[datasets]]
+resolution = 512
+batch_size = 4
+
+  [[datasets.subsets]]
+  image_dir = 'C:/training/images'
+  metadata_file = 'C:/training/images/metadata.json'
+```
+
+<Warning>
+  Regularization images are not supported with the fine-tuning method. Use DreamBooth class+identifier or captioning if you need regularization.
+</Warning>
+
+---
+
+## TOML config parameters reference
+
+<AccordionGroup>
+  <Accordion title="[general] section">
+    <ParamField body="enable_bucket" type="boolean" default="true">
+      Enables Aspect Ratio Bucketing. Images are grouped by aspect ratio and resized to the nearest bucket, minimizing cropping. Strongly recommended for datasets with mixed aspect ratios.
+    </ParamField>
+    <ParamField body="shuffle_caption" type="boolean" default="false">
+      Randomly reorders comma-separated caption tokens each step. Helps prevent the model from relying on token position.
+    </ParamField>
+    <ParamField body="keep_tokens" type="integer" default="0">
+      Number of leading caption tokens to keep in place when `shuffle_caption` is enabled. Useful for keeping an identifier token at the start.
+    </ParamField>
+  </Accordion>
+  <Accordion title="[[datasets]] section">
+    <ParamField body="resolution" type="integer or string">
+      Training resolution. Use a single integer for square images (e.g., `512`) or a string for rectangular images (e.g., `"512,768"`). SD1.x typically uses `512`; SD2.x uses `768`; SDXL uses `1024`.
+    </ParamField>
+    <ParamField body="batch_size" type="integer" default="1">
+      Number of images processed per training step. Increase based on available VRAM. Higher batch sizes may require a lower learning rate.
+    </ParamField>
+  </Accordion>
+  <Accordion title="[[datasets.subsets]] section">
+    <ParamField body="image_dir" type="string" required>
+      Absolute path to the folder containing training images (or, for the folder-naming method, the parent of the concept subfolders).
+    </ParamField>
+    <ParamField body="class_tokens" type="string">
+      The token string used during training, e.g. `sls dog`. Required for the class+identifier method.
+    </ParamField>
+    <ParamField body="caption_extension" type="string" default=".caption">
+      Extension of caption sidecar files when using the captioning method. Use `.txt` if your files have that extension.
+    </ParamField>
+    <ParamField body="num_repeats" type="integer" default="1">
+      Number of times images in this subset are repeated per epoch. For training images this is typically 10–40; for regularization images it is usually 1.
+    </ParamField>
+    <ParamField body="is_reg" type="boolean" default="false">
+      Mark this subset as regularization images. Regularization images are not learned directly; they anchor the class concept so the identifier is learned in isolation.
+    </ParamField>
+    <ParamField body="metadata_file" type="string">
+      Path to the `.json` metadata file. Used only with the fine-tuning method.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Regularization images
+
+Regularization images prevent a phenomenon called **language drift**, where over-training on a small set of images causes the model to conflate the learned identifier with the entire class. For example, training a specific dog breed with `sls dog` without regularization might cause the model to generate breed-specific images even when you prompt with just `dog`.
+
+By providing regularization images of the general class (e.g., generic `dog` photos), the model learns that `dog` refers broadly to dogs while `sls dog` refers specifically to your subject.
+
+### How many regularization images to use
+
+Prepare approximately **100 regularization images** per class to give the model enough variety to generalize the class representation.
+
+### Generating regularization images
+
+The most common approach is to generate them from the base model using only the class name as the prompt:
+
+<Steps>
+  <Step title="Generate images using only the class name">
+    Use any Stable Diffusion interface to generate around 100 images with your class prompt (e.g., `dog`, `1girl`). Match the resolution to your training resolution or the intended bucket resolution.
+  </Step>
+  <Step title="Review and filter">
+    Remove any unusable images (blank, heavily distorted, or unrepresentative). Regularization image quality influences the trained model, so choose carefully.
+  </Step>
+  <Step title="Place in the regularization folder">
+    Put the regularization images in a subfolder named `1_<class>` (e.g., `1_dog`) inside your regularization parent directory. The `1_` prefix sets the repeat count to 1.
+  </Step>
+</Steps>
+
+<Note>
+  Regularization images can also be downloaded from the internet or sourced from your existing model outputs. The key requirement is that they represent the class broadly and are not specific to the subject you are training.
+</Note>
+
+### Repeats ratio
+
+The number of repeats should satisfy:
+
+```text
+training_image_repeats × num_training_images  ≥  reg_image_repeats × num_reg_images
+```
+
+Regularization images beyond this count are not used in a given epoch. Setting training image repeats to 10–40 while keeping regularization repeats at 1 is a common starting configuration.
+
+---
+
+## Multiple datasets and classes
+
+You can combine multiple `[[datasets.subsets]]` blocks — even from different directories — in a single TOML file. Each subset can have its own `resolution`, `batch_size`, `num_repeats`, and `is_reg` setting.
+
+```toml
+[general]
+enable_bucket = true
+
+[[datasets]]
+resolution = 512
+batch_size = 2
+
+  [[datasets.subsets]]
+  image_dir = 'C:/training/character_a'
+  class_tokens = 'sls 1girl'
+  num_repeats = 20
+
+  [[datasets.subsets]]
+  image_dir = 'C:/training/character_b'
+  class_tokens = 'cpc 1boy'
+  num_repeats = 20
+
+  [[datasets.subsets]]
+  is_reg = true
+  image_dir = 'C:/training/reg_girls'
+  class_tokens = '1girl'
+  num_repeats = 1
+
+  [[datasets.subsets]]
+  is_reg = true
+  image_dir = 'C:/training/reg_boys'
+  class_tokens = '1boy'
+  num_repeats = 1
+```

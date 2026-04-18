@@ -1,0 +1,187 @@
+---
+title: "Full Model Fine-Tuning with Metadata Datasets in Kohya"
+description: "Fine-tune a full Stable Diffusion model in Kohya's GUI. Covers metadata JSON prep, dataset config, optimizer settings, and when to use fine-tuning vs LoRA."
+---
+
+Fine-tuning trains the **entire model** — U-Net and optionally the text encoder — on a dataset of images and captions. Unlike DreamBooth, which focuses on learning a single subject, fine-tuning is typically applied to large datasets to shift the model's overall style, knowledge, or output quality.
+
+The underlying script is `fine_tune.py`. Dataset captions and tags are managed through a **metadata `.json` file** rather than per-image caption files or folder-name identifiers. This makes the fine-tuning method efficient at scale: latents and text encoder outputs can be cached, and a single metadata file covers any number of images.
+
+## Fine-Tuning vs. LoRA vs. DreamBooth
+
+| Consideration | Fine-Tuning | DreamBooth | LoRA |
+|---------------|-------------|------------|------|
+| Output size | Full checkpoint (2–7 GB) | Full checkpoint | Small adapter (4–200 MB) |
+| Training data needed | Large dataset | 10–30 images | 10–30+ images |
+| Changes to base model | Entire model | Entire model | No (adapter only) |
+| Regularization images | Not supported | Optional | Optional |
+| Metadata files (JSON) | Required | Not used | Not used |
+| Recommended use case | Style shift, large dataset | Specific subject | Portable, combinable style/subject |
+
+<Tip>
+  If your goal is to teach a specific character or object and you want a small, shareable file, use LoRA. Fine-tuning is most valuable when you have hundreds or thousands of diverse images and want to shift the model's baseline behaviour.
+</Tip>
+
+## Metadata File Format
+
+The fine-tuning method consolidates captions and tags into a single `.json` metadata file. Each entry maps an image filename to its caption and/or tags:
+
+```json
+{
+  "/absolute/path/to/image_001.jpg": {
+    "caption": "a photograph of a red fox in a snowy forest",
+    "tags": "fox, snow, forest, wildlife, nature"
+  },
+  "/absolute/path/to/image_002.jpg": {
+    "caption": "a close-up portrait of a red fox",
+    "tags": "fox, portrait, close-up, animal"
+  }
+}
+```
+
+You do not need to write this file by hand. The scripts in the `finetune/` directory automate captioning and tagging.
+
+## Preparing Metadata
+
+<Steps>
+  <Step title="Organise your training images">
+    Place all images in one or more folders. Supported formats: `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`. There is no required folder structure — only the metadata file matters.
+  </Step>
+
+  <Step title="Generate captions (optional)">
+    Run `make_captions.py` to generate `.caption` files using BLIP:
+
+    ```bash
+    python finetune/make_captions.py --batch_size 8 /path/to/train_data
+    ```
+
+    Caption files are written beside each image with the `.caption` extension.
+  </Step>
+
+  <Step title="Generate tags (optional)">
+    Run WD14Tagger to produce Danbooru-style tag files:
+
+    ```bash
+    python tag_images_by_wd14_tagger.py --batch_size 4 /path/to/train_data
+    ```
+
+    Tag files are written as `.txt` files beside each image.
+  </Step>
+
+  <Step title="Merge captions into the metadata file">
+    ```bash
+    python merge_captions_to_metadata.py --full_path \
+      /path/to/train_data meta_cap.json
+    ```
+
+    The `--full_path` flag stores absolute paths in the metadata, removing the need to specify the image folder separately during training.
+  </Step>
+
+  <Step title="Merge tags into the metadata file">
+    ```bash
+    python merge_dd_tags_to_metadata.py --full_path \
+      /path/to/train_data --in_json meta_cap.json meta_cap_dd.json
+    ```
+
+    The output file `meta_cap_dd.json` now contains both captions and tags.
+  </Step>
+
+  <Step title="Clean up the metadata (optional)">
+    ```bash
+    python clean_captions_and_tags.py meta_cap_dd.json meta_clean.json
+    ```
+
+    This removes duplicates between captions and tags and normalises formatting.
+  </Step>
+</Steps>
+
+## Dataset Configuration File
+
+Create a `.toml` file that points to the image folder and the metadata file:
+
+```toml
+[general]
+shuffle_caption = true
+keep_tokens = 1
+
+[[datasets]]
+resolution = 512          # Training resolution
+batch_size = 4
+
+  [[datasets.subsets]]
+  image_dir = 'C:\\train_data'
+  metadata_file = 'C:\\train_data\\meta_clean.json'
+```
+
+Key fields:
+
+| Field | Description |
+|-------|-------------|
+| `shuffle_caption` | Randomly reorder comma-separated tags each step to prevent positional bias |
+| `keep_tokens` | Number of leading tokens to keep in place when shuffling |
+| `resolution` | Training resolution; `512` for SD 1.x, `768` for SD 2.x |
+| `batch_size` | Images processed per step; increase if VRAM allows |
+| `metadata_file` | Absolute path to the prepared `.json` metadata file |
+
+## Training in the GUI
+
+<Steps>
+  <Step title="Select the Finetune tab">
+    Open Kohya's GUI and click the **Finetune** tab. This exposes the `fine_tune.py` parameters.
+  </Step>
+
+  <Step title="Configure model and folders">
+    - **Pretrained model** — your starting checkpoint
+    - **Image folder** — the directory holding training images
+    - **Output folder** — where the fine-tuned checkpoint will be saved
+    - **Dataset config** — path to your `.toml` file
+  </Step>
+
+  <Step title="Set resolution and batch size">
+    Match the resolution to the metadata preparation step. With 24 GB VRAM, a batch size of 4–8 is feasible at 512px. For SDXL (1024px), batch size 1 with gradient checkpointing is typical.
+  </Step>
+
+  <Step title="Choose optimizer">
+    For SD 1.x, AdamW8bit is a safe default. For SDXL fine-tuning, Adafactor with a fixed learning rate (`4e-7`) is recommended — see the [SDXL page](/training/sdxl) for the full config.
+  </Step>
+
+  <Step title="Start training">
+    Click **Start training**. Fine-tuning a large dataset takes significantly longer than LoRA training. Enable **Save every N epochs** to checkpoint progress and **Save training state** to allow resuming if interrupted.
+  </Step>
+</Steps>
+
+## SDXL Fine-Tuning Guidelines
+
+From `docs/Finetuning/top_level.md`:
+
+- Set **Max resolution** to at least `1024,1024`.
+- Fine-tuning on 24 GB VRAM is feasible at batch size 1 with:
+  - U-Net only training (no text encoder)
+  - Gradient checkpointing enabled
+  - `--cache_text_encoder_outputs` + caching latents
+  - Adafactor optimizer
+
+```toml
+optimizer_type = "adafactor"
+optimizer_args = [ "scale_parameter=False", "relative_step=False", "warmup_init=False" ]
+lr_scheduler = "constant_with_warmup"
+lr_warmup_steps = 100
+learning_rate = 4e-7   # SDXL original learning rate
+```
+
+<Warning>
+  AdamW 8bit does not appear to work well for SDXL fine-tuning. Use Adafactor, RMSprop 8bit, or Adagrad 8bit instead.
+</Warning>
+
+## Differences from DreamBooth
+
+The key structural difference is the absence of regularization images in fine-tuning. The metadata-driven approach also means captions and tags can be managed centrally and updated without reorganising image folders. DreamBooth is oriented around learning a specific subject in a small image set; fine-tuning is oriented around altering the model's general behaviour across a large, diverse dataset.
+
+<CardGroup cols={2}>
+  <Card title="DreamBooth Training" href="/training/dreambooth">
+    Subject-specific training with regularization images
+  </Card>
+  <Card title="LoRA Training" href="/training/lora">
+    Lightweight adapter-based fine-tuning
+  </Card>
+</CardGroup>

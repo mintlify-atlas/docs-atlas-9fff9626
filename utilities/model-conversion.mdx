@@ -1,0 +1,180 @@
+---
+title: "Convert Stable Diffusion Checkpoint Formats and LCM"
+description: "Convert SD checkpoints between ckpt, safetensors, and diffusers formats, and distill any SD model into a Latent Consistency Model."
+---
+
+Kohya's GUI provides two conversion utilities in the **Utilities** section: **Convert model** translates Stable Diffusion checkpoints between the formats used by different tools and runtimes, and **Convert to LCM** distills a standard SD model into a Latent Consistency Model that generates images in far fewer steps. A **Group Images** utility is also available for organising image datasets by aspect ratio before training.
+
+---
+
+## Convert model
+
+The **Convert model** tab (`sd-scripts/tools/convert_diffusers20_original_sd.py`) converts between the three checkpoint formats used in the SD ecosystem.
+
+### Supported formats
+
+| Format | Description |
+|--------|-------------|
+| `ckpt` | Original CompVis/RunwayML binary checkpoint format. Compatible with most legacy tooling. |
+| `safetensors` | Single-file format with header metadata. Safer to load than `.ckpt` and faster to read. |
+| `diffuser` | Hugging Face Diffusers directory layout. Required for training pipelines and many inference libraries. |
+| `diffuser_safetensors` | Diffusers directory layout with all tensors stored as `.safetensors` files instead of `.bin`. |
+
+### Parameters
+
+| Field | Description |
+|-------|-------------|
+| **Source model** | Path to the file or folder to convert. Use the folder browser for diffusers directories, the file browser for `.ckpt` / `.safetensors` files. |
+| **Source model type** | The Hugging Face model ID that identifies the architecture. Required so the script knows whether to apply v1 or v2 parameters. |
+| **Target model folder** | Directory where the converted model will be saved. Must already exist. |
+| **Target model name** | Filename (without extension) for the output. For diffusers output this becomes the subdirectory name. |
+| **Target model type** | Output format: `diffuser`, `diffuser_safetensors`, `ckpt`, or `safetensors`. |
+| **Target model precision** | Floating-point precision of the saved weights: `unspecified` (keep source precision), `fp16`, `bf16`, or `float`. |
+| **UNet linear projection** | Enable this when converting Hugging Face `stabilityai/*` diffusers models. Without it the UNet architecture is reconstructed incorrectly. |
+
+**Source model type reference**
+
+| Model type value | Architecture |
+|-----------------|--------------|
+| `runwayml/stable-diffusion-v1-5` | SD 1.x (sets `--v1`) |
+| `CompVis/stable-diffusion-v1-4` | SD 1.x (sets `--v1`) |
+| `stabilityai/stable-diffusion-2-1-base` | SD 2.x 512 (sets `--v2`) |
+| `stabilityai/stable-diffusion-2-base` | SD 2.x 512 (sets `--v2`) |
+| `stabilityai/stable-diffusion-2-1` | SD 2.x 768 (sets `--v2`) |
+| `stabilityai/stable-diffusion-2` | SD 2.x 768 (sets `--v2`) |
+
+You can also type a custom model ID directly into the dropdown field.
+
+### Conversion workflows
+
+<Tabs>
+  <Tab title="ckpt → safetensors">
+    <Steps>
+      <Step title="Select the source file">
+        Click the file browser button next to **Source model** and select your `.ckpt` file.
+      </Step>
+      <Step title="Set the source model type">
+        Choose the matching entry from the **Source model type** dropdown (e.g., `runwayml/stable-diffusion-v1-5`).
+      </Step>
+      <Step title="Set the output location">
+        Select a **Target model folder** and enter a **Target model name** without an extension.
+      </Step>
+      <Step title="Choose safetensors as the target type">
+        Set **Target model type** to `safetensors`.
+      </Step>
+      <Step title="Set precision and convert">
+        Leave **Target model precision** as `unspecified` to keep the source precision, or set `fp16` to halve the file size. Click **Convert model**.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="ckpt/safetensors → diffusers">
+    <Steps>
+      <Step title="Select the source checkpoint">
+        Use the file browser to pick your `.ckpt` or `.safetensors` file.
+      </Step>
+      <Step title="Set the source model type">
+        Select the matching architecture ID.
+      </Step>
+      <Step title="Set the output folder and name">
+        The **Target model name** becomes a subdirectory inside **Target model folder**. For example, with folder `/models/` and name `my-model`, the diffusers layout is saved to `/models/my-model/`.
+      </Step>
+      <Step title="Choose diffuser or diffuser_safetensors">
+        Use `diffuser_safetensors` if you want the safer `.safetensors` tensor format inside the diffusers directory.
+      </Step>
+      <Step title="Enable UNet linear projection if needed">
+        Check **UNet linear projection** when the source is a Hugging Face `stabilityai/*` model.
+      </Step>
+      <Step title="Click Convert model">
+        The diffusers directory structure is created at the target path.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="diffusers → ckpt/safetensors">
+    <Steps>
+      <Step title="Select the diffusers folder">
+        Click the folder browser button next to **Source model** and select the diffusers directory (the folder that contains `model_index.json`).
+      </Step>
+      <Step title="Set source model type">
+        Choose the matching architecture ID for the model.
+      </Step>
+      <Step title="Set target type to ckpt or safetensors">
+        Choose your preferred single-file output format.
+      </Step>
+      <Step title="Set output folder, name, and precision">
+        The output file will be saved as `<Target model folder>/<Target model name>.<extension>`.
+      </Step>
+      <Step title="Click Convert model">
+        The single-file checkpoint is written to the specified location.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+---
+
+## Convert to LCM
+
+The **Convert to LCM** tab (`tools/lcm_convert.py`) distills a standard Stable Diffusion model into a **Latent Consistency Model** (LCM). LCMs can produce high-quality images in 2–8 inference steps by incorporating consistency distillation into the model weights.
+
+<Note>
+LCM conversion wraps the model's U-Net with a consistency objective. The output is a `.safetensors` file that can be loaded as a LoRA or used as a standalone model depending on the distillation method and the tooling you use downstream.
+</Note>
+
+### Parameters
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| **Stable Diffusion model to convert** | — | Source `.safetensors` checkpoint to distill. |
+| **Name of the new LCM model** | — | Output file path. If you provide only a filename, the file is saved in the same directory as the source model. |
+| **Strength of the LCM** | `1.0` | Lora scale applied during the distillation (0.0–2.0). `1.0` applies full LCM distillation. |
+| **Model type** | `SD15` | Architecture of the source model: `SD15`, `SDXL`, or `SD-1B` (SSD-1B). |
+
+**Model type and flags**
+
+| Model type | Flag passed to script |
+|-----------|----------------------|
+| `SD15` | *(none)* |
+| `SDXL` | `--sdxl` |
+| `SD-1B` | `--ssd-1b` |
+
+### LCM conversion workflow
+
+<Steps>
+  <Step title="Select the source model">
+    Choose the `.safetensors` checkpoint you want to convert. Only `.safetensors` files are supported; convert `.ckpt` files first using **Convert model** if needed.
+  </Step>
+  <Step title="Set the output name">
+    Enter a full path or just a filename. If you give only a filename, the LCM is saved next to the source model.
+  </Step>
+  <Step title="Select the model type">
+    Choose `SD15` for SD 1.x models, `SDXL` for SDXL, or `SD-1B` for SSD-1B.
+  </Step>
+  <Step title="Adjust LCM strength">
+    Leave **Strength** at `1.0` for standard distillation. Lower values produce a lighter distillation that retains more of the original model's behaviour at the cost of fewer-step acceleration.
+  </Step>
+  <Step title="Click Extract LCM">
+    The converted model is written to the specified output path.
+  </Step>
+</Steps>
+
+---
+
+## Group Images
+
+The **Group Images** tab (`tools/group_images.py`) reorganises images from an input folder into numbered subfolders based on aspect ratio. Training with images grouped by aspect ratio reduces padding waste and can improve training stability when using bucket-based resolution training.
+
+### Parameters
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| **Input folder** | — | Folder containing the source images. |
+| **Output folder** | — | Destination for the organised subfolders. |
+| **Group size** | `4` | Number of images per group / subfolder (1–64). |
+| **Include subfolders** | `false` | Also processes images found in subdirectories of the input folder. |
+| **Do not copy other files** | `false` | When enabled, only image files are copied; other files (captions, etc.) are left in place. |
+| **Generate captions** | `false` | Creates a caption file for each grouped image named after the destination subfolder. |
+| **Caption file extension** | `.txt` | Extension used when **Generate captions** is enabled. |
+
+<Tip>
+Disable **Do not copy other files** (the default) to ensure caption sidecar files travel with their images into the grouped subfolders. If you have already run a captioner, this keeps image–caption pairs together after grouping.
+</Tip>

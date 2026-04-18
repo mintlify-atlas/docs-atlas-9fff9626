@@ -1,0 +1,299 @@
+---
+title: 'Persist Default Paths and Settings with config.toml'
+description: 'Set persistent default paths for models, datasets, and outputs so you never have to re-enter the same directories between training sessions.'
+---
+
+The `config.toml` file lets you pre-fill directory paths and training defaults across every tab in the GUI. Instead of manually selecting your models folder or output directory each time you open Kohya's GUI, the values from `config.toml` are loaded automatically at startup and pre-populate the corresponding fields.
+
+## Creating config.toml
+
+<Steps>
+  <Step title="Copy the example file">
+    In the root of the `kohya_ss` repository, find the file named `config example.toml`. Copy it and rename the copy to `config.toml`.
+
+    ```bash
+    cp "config example.toml" config.toml
+    ```
+  </Step>
+  <Step title="Open config.toml in a text editor">
+    The file uses [TOML](https://toml.io) format: sections are declared with `[section_name]` headers, and each entry is a `key = value` pair.
+  </Step>
+  <Step title="Set your paths">
+    Replace the placeholder values with absolute paths that match your local directory layout. Use forward slashes even on Windows.
+
+    ```toml
+    [model]
+    models_dir = "C:/ai/stable-diffusion-webui/models/Stable-diffusion"
+    output_name = "my_lora"
+    train_data_dir = "C:/ai/datasets/my_project"
+    ```
+  </Step>
+  <Step title="Save and restart the GUI">
+    The next time you launch the GUI, the fields will be pre-filled with your configured values.
+  </Step>
+</Steps>
+
+<Note>
+  `config.toml` is loaded from the repository root by default. Use the `--config` flag to specify a different location (see [Using a custom path](#using-a-custom-config-path) below).
+</Note>
+
+## Path format guidance
+
+<Warning>
+  Always use **forward slashes** (`/`) in paths, even on Windows. Backslashes can cause TOML parsing errors. Use absolute paths or paths relative to the `kohya_ss` root directory. Ensure every directory you reference already exists on your system.
+</Warning>
+
+<CodeGroup>
+
+```toml Windows example
+[model]
+models_dir = "C:/Users/YourName/StableDiffusion/models/Stable-diffusion"
+
+[folders]
+output_dir = "C:/ai/kohya_outputs"
+logging_dir = "C:/ai/kohya_outputs/logs"
+```
+
+```toml Linux / macOS example
+[model]
+models_dir = "/home/yourname/sd-models"
+
+[folders]
+output_dir = "/home/yourname/kohya_outputs"
+logging_dir = "/home/yourname/kohya_outputs/logs"
+```
+
+</CodeGroup>
+
+---
+
+## Configuration sections
+
+### [settings]
+
+General GUI behaviour settings.
+
+<AccordionGroup>
+  <Accordion title="use_shell">
+    <ParamField body="use_shell" type="boolean" default="false">
+      When `true`, the GUI spawns training processes through a system shell. The most secure value is `false`. Some systems require `true` to correctly run the sd-scripts Python code.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+### [model]
+
+Default values for the model and dataset fields that appear at the top of every training tab.
+
+<AccordionGroup>
+  <Accordion title="models_dir">
+    <ParamField body="models_dir" type="string" default="./models">
+      Directory containing your pretrained base models (`.ckpt` or `.safetensors` files). The model picker in the GUI will open here by default.
+    </ParamField>
+  </Accordion>
+  <Accordion title="output_name">
+    <ParamField body="output_name" type="string" default="new model">
+      Default filename (without extension) for the trained model file that is saved after training completes.
+    </ParamField>
+  </Accordion>
+  <Accordion title="train_data_dir">
+    <ParamField body="train_data_dir" type="string" default="./data">
+      Path to the folder that contains your training image subfolders. For DreamBooth-style datasets this is the parent folder, not the subfolder with images.
+    </ParamField>
+  </Accordion>
+  <Accordion title="dataset_config">
+    <ParamField body="dataset_config" type="string" default="./test.toml">
+      Optional path to a dataset TOML configuration file. When set, the GUI pre-fills the dataset config field so you can skip selecting it manually.
+    </ParamField>
+  </Accordion>
+  <Accordion title="training_comment">
+    <ParamField body="training_comment" type="string" default="">
+      A free-text comment embedded in the saved model's metadata. Useful for tracking training runs.
+    </ParamField>
+  </Accordion>
+  <Accordion title="save_model_as">
+    <ParamField body="save_model_as" type="string" default="safetensors">
+      Format in which the trained model is saved. Accepted values: `ckpt`, `safetensors`, `diffusers`, `diffusers_safetensors`.
+    </ParamField>
+  </Accordion>
+  <Accordion title="save_precision">
+    <ParamField body="save_precision" type="string" default="bf16">
+      Numeric precision used when saving the model. Accepted values: `fp16`, `bf16`, `float`. Using `bf16` or `fp16` reduces file size compared to `float`.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+### [folders]
+
+Output and auxiliary folder locations.
+
+<AccordionGroup>
+  <Accordion title="output_dir">
+    <ParamField body="output_dir" type="string" default="./outputs">
+      Directory where trained model checkpoints are written after each save interval.
+    </ParamField>
+  </Accordion>
+  <Accordion title="reg_data_dir">
+    <ParamField body="reg_data_dir" type="string" default="./data/reg">
+      Directory containing regularization image subfolders. Used by DreamBooth training to prevent language drift.
+    </ParamField>
+  </Accordion>
+  <Accordion title="logging_dir">
+    <ParamField body="logging_dir" type="string" default="./logs">
+      Directory for TensorBoard-format training logs. Open TensorBoard pointed at this directory to monitor loss curves in real time.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+### [configuration]
+
+GUI preset management.
+
+<AccordionGroup>
+  <Accordion title="config_dir">
+    <ParamField body="config_dir" type="string" default="./presets">
+      Default directory used by the **Load / Save Config** buttons in the GUI. Presets you save are written here and can be reloaded in future sessions.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+### [accelerate_launch]
+
+Defaults for the **Accelerate launch** tab, which controls how the training process is launched. See the [Accelerate launch](/configuration/accelerate-launch) page for full details on each field.
+
+```toml
+[accelerate_launch]
+dynamo_backend = "no"
+dynamo_mode = "default"
+dynamo_use_dynamic = false
+dynamo_use_fullgraph = false
+extra_accelerate_launch_args = ""
+gpu_ids = ""
+main_process_port = 0
+mixed_precision = "fp16"
+multi_gpu = false
+num_cpu_threads_per_process = 2
+num_machines = 1
+num_processes = 1
+```
+
+---
+
+### [basic]
+
+Default values for the **Basic** training parameters tab.
+
+<AccordionGroup>
+  <Accordion title="Core training settings">
+    <ParamField body="cache_latents" type="boolean" default="true">
+      Cache VAE-encoded latents in RAM to speed up training and reduce VRAM usage. Disables most augmentations except `flip_aug`.
+    </ParamField>
+    <ParamField body="cache_latents_to_disk" type="boolean" default="false">
+      Write latent cache to disk instead of RAM. The cache persists across restarts, which is useful for very large datasets.
+    </ParamField>
+    <ParamField body="epoch" type="integer" default="1">
+      Number of training epochs. Each epoch processes the entire dataset once (accounting for repeats).
+    </ParamField>
+    <ParamField body="train_batch_size" type="integer" default="1">
+      Number of images processed per training step. Larger values require more VRAM but can improve training stability.
+    </ParamField>
+    <ParamField body="seed" type="integer" default="1234">
+      Random seed for reproducibility. Use the same seed to reproduce a training run exactly.
+    </ParamField>
+  </Accordion>
+  <Accordion title="Learning rate settings">
+    <ParamField body="learning_rate" type="float" default="0.0001">
+      Base learning rate applied to the U-Net. The appropriate value varies by training method; `1e-4` is a common starting point for LoRA.
+    </ParamField>
+    <ParamField body="learning_rate_te" type="float" default="0.0001">
+      Learning rate for the text encoder (SD1.x models).
+    </ParamField>
+    <ParamField body="learning_rate_te1" type="float" default="0.0001">
+      Learning rate for the first text encoder (SDXL / dual text-encoder models).
+    </ParamField>
+    <ParamField body="learning_rate_te2" type="float" default="0.0001">
+      Learning rate for the second text encoder (SDXL models).
+    </ParamField>
+    <ParamField body="lr_scheduler" type="string" default="cosine">
+      Learning rate schedule. Options include `linear`, `cosine`, `cosine_with_restarts`, `polynomial`, `constant`, `constant_with_warmup`.
+    </ParamField>
+    <ParamField body="lr_warmup" type="integer" default="0">
+      Percentage of total training steps used for LR warmup (0–100).
+    </ParamField>
+    <ParamField body="lr_scheduler_num_cycles" type="integer" default="1">
+      Number of restarts for `cosine_with_restarts` scheduler.
+    </ParamField>
+    <ParamField body="lr_scheduler_power" type="float" default="1.0">
+      Polynomial power for the `polynomial` LR scheduler.
+    </ParamField>
+  </Accordion>
+  <Accordion title="Bucket / resolution settings">
+    <ParamField body="enable_bucket" type="boolean" default="true">
+      Enable Aspect Ratio Bucketing so images of different aspect ratios can be trained together without cropping.
+    </ParamField>
+    <ParamField body="max_resolution" type="string" default="512,512">
+      Maximum training resolution as `width,height`. Use `512,512` for SD1.x and `1024,1024` for SDXL.
+    </ParamField>
+    <ParamField body="min_bucket_reso" type="integer" default="256">
+      Minimum bucket resolution in pixels. Resolutions smaller than this are not used.
+    </ParamField>
+    <ParamField body="max_bucket_reso" type="integer" default="2048">
+      Maximum bucket resolution in pixels.
+    </ParamField>
+  </Accordion>
+  <Accordion title="Optimizer settings">
+    <ParamField body="optimizer" type="string" default="AdamW8bit">
+      Optimizer used during training. Common choices: `AdamW`, `AdamW8bit`, `Lion`, `Adafactor`, `DAdaptation`, `Prodigy`.
+    </ParamField>
+    <ParamField body="optimizer_args" type="string" default="">
+      Additional arguments passed directly to the optimizer, e.g. `weight_decay=0.01 betas=.9,.999`.
+    </ParamField>
+    <ParamField body="max_grad_norm" type="float" default="1.0">
+      Gradient clipping norm. Set to `0` to disable clipping.
+    </ParamField>
+  </Accordion>
+  <Accordion title="Saving settings">
+    <ParamField body="save_every_n_epochs" type="integer" default="1">
+      Save a model checkpoint after every N epochs. Set to `0` to disable epoch-based saving.
+    </ParamField>
+    <ParamField body="save_every_n_steps" type="integer" default="1">
+      Save a model checkpoint after every N steps. Set to `0` to disable step-based saving.
+    </ParamField>
+    <ParamField body="mixed_precision" type="string" default="fp16">
+      Precision mode for training: `no` (fp32), `fp16`, or `bf16`. Reduces VRAM usage at a slight accuracy trade-off.
+    </ParamField>
+    <ParamField body="caption_extension" type="string" default=".txt">
+      File extension for caption sidecar files. Use `.caption` or `.txt` depending on how your dataset is organized.
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Using a custom config path
+
+If you want to keep your configuration file outside the repository root or use a different name, pass its path with the `--config` flag when starting the GUI:
+
+<CodeGroup>
+
+```bash Windows
+gui.bat --config D:/my_configs/kohya_settings.toml
+```
+
+```bash Linux / macOS
+./gui.sh --config /home/user/my_configs/kohya_settings.toml
+```
+
+</CodeGroup>
+
+<Tip>
+  You can maintain multiple `config.toml` files — one per project or machine — and switch between them using the `--config` flag. This is useful when working across different storage locations or GPU setups.
+</Tip>

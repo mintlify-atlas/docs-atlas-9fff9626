@@ -1,97 +1,80 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Kohya's GUI: Train Stable Diffusion Models Visually"
+description: "A Gradio-based GUI and CLI for training Stable Diffusion models using LoRA, DreamBooth, fine-tuning, and more. Supports SD1.x, SDXL, Flux.1, and SD3."
 ---
 
-## Setting up
+Kohya's GUI provides a user-friendly web interface for training custom Stable Diffusion models. Whether you want to create a LoRA for a specific art style, run DreamBooth to teach the model a new subject, or fine-tune an entire model, Kohya's GUI wraps Kohya's powerful training scripts in an accessible Gradio interface — no command-line expertise required.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation/overview">
+    Install Kohya's GUI on Windows, Linux, or macOS using uv or pip
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="LoRA Training" icon="brain" href="/training/lora">
+    Train low-rank adaptation models to customize image generation
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="DreamBooth" icon="image" href="/training/dreambooth">
+    Fine-tune Stable Diffusion to learn a specific subject or style
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Configuration" icon="sliders" href="/configuration/config-toml">
+    Set default paths and preferences with config.toml
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What you can do with Kohya's GUI
 
-Everything you need to create world-class documentation.
+Kohya's GUI supports the full range of Stable Diffusion training workflows — from lightweight LoRA adapters to full model fine-tuning — across all major model architectures.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+<CardGroup cols={3}>
+  <Card title="LoRA and LyCORIS" icon="network-wired" href="/training/lora">
+    Train Standard, DyLoRA, LoHa, LoCon, and other network types
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="DreamBooth" icon="star" href="/training/dreambooth">
+    Class+identifier and captioning methods with regularization support
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Fine-tuning" icon="wrench" href="/training/finetuning">
+    Full model fine-tuning with metadata-driven datasets
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Textual Inversion" icon="font" href="/training/textual-inversion">
+    Train text embeddings to capture concepts and styles
   </Card>
-</Columns>
+  <Card title="SDXL Training" icon="expand" href="/training/sdxl">
+    High-resolution training for Stable Diffusion XL models
+  </Card>
+  <Card title="Flux.1 and SD3" icon="bolt" href="/training/flux1-sd3">
+    Next-generation model training for Flux.1 and SD3
+  </Card>
+</CardGroup>
 
-## Need inspiration?
+## Get started in minutes
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<Steps>
+  <Step title="Choose your installation method">
+    Pick the setup that fits your platform. For most users, the `uv`-based launcher is the fastest path to a working environment. See the [installation overview](/installation/overview) for all options.
+  </Step>
+  <Step title="Launch the GUI">
+    Run `./gui-uv.sh` on Linux/macOS or `gui-uv.bat` on Windows. The Gradio interface will open in your browser at `http://127.0.0.1:7860`.
+  </Step>
+  <Step title="Configure your dataset">
+    Prepare your training images in a folder, add captions if needed, and point the GUI to your dataset directory. See [dataset preparation](/configuration/dataset-preparation) for details.
+  </Step>
+  <Step title="Start training">
+    Select your training method tab (LoRA, DreamBooth, etc.), fill in your model and output paths, then click **Start Training**. Monitor progress via TensorBoard or WandB.
+  </Step>
+</Steps>
+
+## Run anywhere
+
+<CardGroup cols={2}>
+  <Card title="Cloud GPU with Runpod" icon="cloud" href="/cloud/runpod">
+    Deploy on Runpod for on-demand GPU training without local hardware
+  </Card>
+  <Card title="Docker" icon="docker" href="/cloud/docker">
+    Containerized deployment for reproducible environments
+  </Card>
+  <Card title="Novita AI" icon="server" href="/cloud/novita">
+    Integrated cloud training via the Novita AI platform
+  </Card>
+  <Card title="Troubleshooting" icon="circle-question" href="/troubleshooting">
+    Common issues and solutions for all platforms
+  </Card>
+</CardGroup>

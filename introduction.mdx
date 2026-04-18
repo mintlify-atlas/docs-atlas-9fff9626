@@ -1,0 +1,58 @@
+---
+title: "Introduction to Kohya's GUI for Stable Diffusion training"
+description: "Kohya's GUI wraps the sd-scripts training toolkit in a browser-based interface, covering LoRA, DreamBooth, fine-tuning, Textual Inversion, SDXL, Flux.1, and SD3."
+---
+
+Kohya's GUI is a user-friendly, Gradio-based graphical interface for [Kohya's Stable Diffusion training scripts](https://github.com/kohya-ss/sd-scripts). It eliminates the need to hand-craft complex command-line invocations — you configure training parameters through a web UI, and the application generates and executes the correct CLI commands for you. Whether you're fine-tuning a base model, building a LoRA adapter, or experimenting with Textual Inversion, Kohya's GUI gives you full control from a browser window.
+
+## Supported training methods
+
+The GUI exposes four core training workflows, each available as its own tab:
+
+- **LoRA (Low-Rank Adaptation)** — Train lightweight adapter networks that modify a base model's behavior without replacing its weights. LoRAs are small, portable, and composable.
+- **DreamBooth** — Fine-tune an entire model on a small set of subject images so the model learns to generate that subject on demand.
+- **Fine-tuning** — Full or partial weight fine-tuning for broader style or capability adjustments to a base checkpoint.
+- **Textual Inversion** — Teach the model a new concept by embedding it in the token space, without modifying any model weights.
+
+## Supported model architectures
+
+| Architecture | Notes |
+|---|---|
+| SD 1.x | Stable Diffusion 1.4 / 1.5 |
+| SD 2.x | Stable Diffusion 2.0 / 2.1 |
+| SDXL | Stable Diffusion XL (base + refiner) |
+| Flux.1 | Added in v25.0.0 |
+| SD3 | Added in v25.0.0 |
+
+## Platform support
+
+Kohya's GUI runs on **Windows**, **Linux**, and **macOS** (macOS via the pip method). Linux support is actively maintained through community contributions; macOS compatibility may vary across hardware generations, particularly Apple Silicon.
+
+## Key features
+
+- Visual interface for the full range of sd-scripts training parameters
+- Automatic generation of the underlying CLI commands — inspect them before running
+- `config.toml` support to pre-fill default paths across sessions
+- Sample image generation during training with configurable prompt files
+- Multi-GPU support via the Accelerate launch tab
+- Masked loss support for region-targeted training
+- Headless / reverse-proxy mode for running on remote servers
+
+## Get started
+
+Choose an installation method for your platform to begin.
+
+<CardGroup cols={2}>
+  <Card title="Installation overview" icon="map" href="/installation/overview">
+    Compare uv vs pip and choose the right method for your setup.
+  </Card>
+  <Card title="Linux — uv (recommended)" icon="linux" href="/installation/linux-uv">
+    Fastest setup on Linux using the uv package manager.
+  </Card>
+  <Card title="Windows — uv (recommended)" icon="windows" href="/installation/windows-uv">
+    Fastest setup on Windows using the uv package manager.
+  </Card>
+  <Card title="Linux / macOS — pip" icon="terminal" href="/installation/pip-linux">
+    Traditional pip-based install for Linux and macOS.
+  </Card>
+</CardGroup>

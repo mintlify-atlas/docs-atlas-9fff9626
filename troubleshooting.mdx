@@ -1,0 +1,320 @@
+---
+title: "Troubleshoot Kohya's GUI Installation and Training Issues"
+description: "Solutions for the most common Kohya's GUI errors — page file limits, missing tkinter, V100 GPU utilization, VRAM sizing, Gradio/ASGI failures, and more."
+---
+
+This page collects solutions for the issues most frequently reported by Kohya's GUI users across Windows, Linux, and cloud GPU environments. Each section describes the symptom, explains why it happens, and gives concrete steps to resolve it.
+
+<Tip>
+  Before diving into specific issues, make sure you are on the latest release. Many problems — including Gradio ASGI failures and requirements version conflicts — were fixed in recent updates. Run `git pull` and restart the GUI first.
+</Tip>
+
+---
+
+## Installation and startup issues
+
+<AccordionGroup>
+
+  <Accordion title="Page file limit error (Windows)">
+
+    **Symptom:** Training crashes with an error message referencing the page file or virtual memory. This typically surfaces during data loading when the system runs out of addressable memory.
+
+    **Cause:** Windows imposes a limit on virtual memory (the page file). When training large datasets or using high batch sizes, the combined RAM and page file space is exhausted.
+
+    **Solution:** Increase the Windows page file size.
+
+    <Steps>
+      <Step title="Open virtual memory settings">
+        Press **Win + R**, type `sysdm.cpl`, and press Enter. Go to **Advanced** → **Performance** → **Settings** → **Advanced** → **Virtual memory** → **Change**.
+      </Step>
+      <Step title="Disable automatic management">
+        Uncheck **Automatically manage paging file size for all drives**.
+      </Step>
+      <Step title="Set a custom size">
+        Select your system drive, choose **Custom size**, and set both Initial size and Maximum size to at least **40960 MB** (40 GB). Click **Set**, then **OK**.
+      </Step>
+      <Step title="Restart your PC">
+        The new page file size takes effect after a reboot.
+      </Step>
+    </Steps>
+
+    <Note>
+      On systems with 32 GB or more of RAM, page file errors during training are less common. If the error persists after increasing the page file, try reducing **Train batch size** or enabling **Gradient checkpointing**.
+    </Note>
+
+  </Accordion>
+
+  <Accordion title="No module named 'tkinter'">
+
+    **Symptom:** Python raises `ModuleNotFoundError: No module named 'tkinter'` on startup or during a utility that opens a file dialog.
+
+    **Cause:** The `tkinter` module is not included in all Python distributions. Some Linux packages and some Windows custom Python builds omit it.
+
+    **Solution:** Reinstall or supplement Python with tkinter support.
+
+    <Tabs>
+      <Tab title="Windows">
+        Reinstall Python 3.10 from the official installer at [python.org](https://www.python.org/downloads/). During installation, ensure the **tcl/tk and IDLE** optional feature is checked.
+      </Tab>
+      <Tab title="Ubuntu / Debian">
+        Install the tkinter package for your Python version:
+
+        ```bash
+        sudo apt update
+        sudo apt install python3-tk
+        ```
+
+        If you are using a specific Python version (e.g., 3.11):
+
+        ```bash
+        sudo apt install python3.11-tk
+        ```
+      </Tab>
+      <Tab title="Fedora / RHEL">
+        ```bash
+        sudo dnf install python3-tkinter
+        ```
+      </Tab>
+    </Tabs>
+
+  </Accordion>
+
+  <Accordion title="ASGI / Gradio version incompatibility">
+
+    **Symptom:** The GUI fails to start or crashes immediately with an error referencing ASGI, `uvicorn`, `starlette`, or a Gradio internal component. This typically looks like:
+
+    ```text
+    AttributeError: module 'gradio' has no attribute '...'
+    ```
+
+    or
+
+    ```text
+    ERROR: Application startup failed. Exiting.
+    ```
+
+    **Cause:** An outdated version of Gradio (or a Gradio version that is incompatible with the installed `diffusers` or `huggingface-hub`) is installed in your environment.
+
+    **Solution:** Update Gradio to 5.14.0 or later. The v25.0.2 release of Kohya's GUI enforces this minimum version.
+
+    ```bash
+    # If using pip environment
+    pip install "gradio>=5.14.0"
+
+    # If using uv environment, pull the latest repo and re-run the launcher
+    git pull
+    ./gui-uv.sh
+    ```
+
+    The v25.0.3 release also updated `diffusers` and `huggingface-hub` alongside Gradio. If you see ASGI errors after upgrading Gradio alone, run a full update:
+
+    ```bash
+    git pull
+    ./gui-uv.sh --noverify
+    ```
+
+    then allow the `uv` environment to refresh its dependencies on next launch (remove `--noverify`).
+
+  </Accordion>
+
+  <Accordion title="Requirements verification fails or is slow">
+
+    **Symptom:** The GUI hangs at startup during the requirements check, or `validate_requirements.py` raises an error about a package version.
+
+    **Cause:** The bundled requirements file specifies version ranges that conflict with what is installed, or the verification script cannot reach PyPI in air-gapped environments.
+
+    **Solution options:**
+
+    1. **Skip verification** with `--noverify` while you investigate:
+
+       ```bash
+       ./gui-uv.sh --noverify
+       ```
+
+    2. **Supply a custom requirements file** that matches your pinned environment:
+
+       ```bash
+       ./gui-uv.sh --requirements /path/to/my-requirements.txt
+       ```
+
+    3. **Update to the latest release**, which includes fixed version constraints:
+
+       ```bash
+       git pull
+       ```
+
+    <Warning>
+      Using `--noverify` bypasses all package checks. Missing or incompatible packages will cause errors later during training rather than at startup. Use it as a temporary workaround, not a permanent configuration.
+    </Warning>
+
+  </Accordion>
+
+</AccordionGroup>
+
+---
+
+## GPU and training performance issues
+
+<AccordionGroup>
+
+  <Accordion title="LoRA training on TESLA V100 — low GPU utilization">
+
+    **Symptom:** GPU utilization stays below 30–40% during LoRA training on a TESLA V100 (or other data-center GPU). Training is slower than expected for the hardware.
+
+    **Cause:** The default training configuration — small batch size combined with optimizers that perform per-parameter adaptive computations — does not saturate the V100's compute capacity. Data-center GPUs are designed for high-throughput workloads and need larger effective batches to utilize their memory bandwidth efficiently.
+
+    **Solution:**
+
+    1. **Use the `AdamW8bit` optimizer.** Its 8-bit quantized operations match the V100's memory access patterns better than full-precision alternatives.
+    2. **Increase batch size** until GPU utilization reaches 70–80% without exceeding VRAM limits. Start with `batch size = 4` and increase by 2 until memory pressure becomes apparent.
+
+    ```toml
+    # Example dataset config for V100
+    [[datasets]]
+    batch_size = 8
+    ```
+
+    Set the optimizer in the GUI's **Learning rate parameters** section: `Optimizer = AdamW8bit`.
+
+    <Tip>
+      Monitor GPU utilization with `nvidia-smi dmon -s u` in a separate terminal while training. Aim for sustained utilization above 70%.
+    </Tip>
+
+  </Accordion>
+
+  <Accordion title="Selecting a specific GPU for training">
+
+    **Symptom:** Training runs on the wrong GPU, or you want to direct training to a specific device in a multi-GPU system.
+
+    **Cause:** By default, Accelerate (the training back-end) selects GPU 0. No argument to `kohya_gui.py` controls GPU selection directly.
+
+    **Solution:** Use the **Accelerate launch** tab inside the GUI.
+
+    <Steps>
+      <Step title="Open the Accelerate launch tab">
+        In the Kohya's GUI browser window, navigate to the **LoRA** (or other training) tab, then look for the **Accelerate launch** sub-tab.
+      </Step>
+      <Step title="Uncheck Multi-GPU">
+        Ensure the **Multi-GPU** checkbox is unchecked to enable single-GPU selection.
+      </Step>
+      <Step title="Enter the GPU ID">
+        In the **GPU IDs** field, enter the numeric ID of the GPU you want to use (e.g., `1` for the second GPU in your system). GPU IDs match the index shown by `nvidia-smi`.
+      </Step>
+      <Step title="Save and start training">
+        Save the Accelerate configuration, then start training normally.
+      </Step>
+    </Steps>
+
+  </Accordion>
+
+  <Accordion title="VRAM requirements by training method">
+
+    VRAM requirements vary significantly by training method, model architecture, and configuration. The following are rough minimum values with common settings:
+
+    | Method | Model | Min VRAM | Notes |
+    |--------|-------|----------|-------|
+    | LoRA (Standard) | SD1.x | 4 GB | `batch_size=1`, fp16, xformers, cache latents |
+    | LoRA (Standard) | SD1.x | 6 GB | `batch_size=2`, fp16, xformers |
+    | LoRA (Standard) | SDXL | 8 GB | `batch_size=1`, fp16, xformers, gradient checkpointing |
+    | DreamBooth | SD1.x | 8 GB | `batch_size=1`, fp16, xformers |
+    | Fine-tuning | SD1.x | 12 GB+ | Full model update |
+    | LoRA (Standard) | Flux.1 | 12 GB+ | Depends on rank and quantization |
+
+    **Tips to reduce VRAM usage:**
+
+    - Enable **Use xformers** (default: on)
+    - Enable **Cache latents** (default: on)
+    - Enable **Gradient checkpointing**
+    - Use **Mixed precision: fp16** or **bf16**
+    - Lower **Network Rank (Dimension)** (start at 8)
+    - Use **AdamW8bit** optimizer
+    - Set **Train batch size** to 1
+
+    <Note>
+      The full fp16 training mode (`Full fp16 training`, experimental) can train SD1.x at 512×512 with under 8 GB of VRAM, but increases the risk of training instability.
+    </Note>
+
+  </Accordion>
+
+  <Accordion title="Running multiple training instances on Linux">
+
+    **Symptom:** You want to run two or more independent Kohya's GUI instances simultaneously on the same Linux machine (e.g., for parallel experiments or multiple users).
+
+    **Solution:** Launch each instance on a different port using `nohup` to keep them alive after you disconnect:
+
+    ```bash
+    # Instance 1 — port 7860
+    nohup ./gui-uv.sh \
+      --listen 0.0.0.0 \
+      --server_port 7860 \
+      --headless \
+      > /tmp/kohya-7860.log 2>&1 &
+
+    # Instance 2 — port 7861
+    nohup ./gui-uv.sh \
+      --listen 0.0.0.0 \
+      --server_port 7861 \
+      --headless \
+      > /tmp/kohya-7861.log 2>&1 &
+    ```
+
+    Open each instance in a separate browser tab:
+    - `http://<server-ip>:7860`
+    - `http://<server-ip>:7861`
+
+    **Monitoring running instances:**
+
+    ```bash
+    # List all kohya processes
+    ps aux | grep kohya_gui
+
+    # Follow logs for instance on port 7860
+    tail -f /tmp/kohya-7860.log
+    ```
+
+    For interactive terminal sessions across reconnects, use `tmux` or `screen` instead of `nohup`:
+
+    ```bash
+    tmux new-session -d -s kohya1 './gui-uv.sh --headless --listen 0.0.0.0 --server_port 7860'
+    tmux new-session -d -s kohya2 './gui-uv.sh --headless --listen 0.0.0.0 --server_port 7861'
+    ```
+
+  </Accordion>
+
+</AccordionGroup>
+
+---
+
+## Training quality issues
+
+<AccordionGroup>
+
+  <Accordion title="LoRA produces poor or unstable results">
+
+    Common causes and targeted fixes:
+
+    | Symptom | Likely cause | Fix |
+    |---------|-------------|-----|
+    | Generated images look like the training images but lose generality | Overfitting | Reduce epochs; lower network rank; enable shuffle caption |
+    | Images look nothing like the training concept | Underfitting / too few steps | Increase epoch count or image repeats; raise learning rate slightly |
+    | Colors look washed out or dull | Missing noise offset | Set **Noise offset** to `0.1` |
+    | Training loss oscillates wildly | Learning rate too high | Halve the learning rate; switch to `cosine` scheduler |
+    | Text encoder associations are wrong | Clip skip mismatch | Check the base model — Novel AI-derived models need `Clip skip = 2` |
+
+  </Accordion>
+
+  <Accordion title="Captions not loading or wrong extension">
+
+    **Symptom:** Training runs but ignores caption files, treating images as uncaptioned.
+
+    **Cause:** The **Caption extension** field does not match the actual file extension of your caption files.
+
+    **Solution:** Set **Caption extension** to match your files exactly, including the leading dot:
+    - For `.caption` files (default): leave the field blank or enter `.caption`
+    - For `.txt` files: enter `.txt`
+
+    Verify that caption files are in the same directory as the images they describe and share the exact same filename (excluding extension).
+
+  </Accordion>
+
+</AccordionGroup>

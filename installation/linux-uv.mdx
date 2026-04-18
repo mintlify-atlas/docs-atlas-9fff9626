@@ -1,0 +1,145 @@
+---
+title: "Install Kohya's GUI on Linux using uv (recommended)"
+description: "Step-by-step guide to installing Kohya's GUI on Linux with the uv package manager, including prerequisites, CLI options, and upgrade instructions."
+---
+
+The `uv` method is the recommended installation path for Linux users. The launch script (`gui-uv.sh`) handles virtual environment creation, dependency installation, and upgrades automatically — no separate setup step is needed. If `uv` is not already on your system, the script will offer to install it for you.
+
+## Prerequisites
+
+- **Python 3.10.9 or higher** (below 3.12) — The `uv` environment uses the version specified in `.python-version` at the repository root. Edit that file to pin a different version.
+- **Git** — Required to clone the repository and pull updates.
+- **NVIDIA CUDA Toolkit 12.8** — Required for GPU-accelerated training.
+- **NVIDIA GPU** — VRAM requirements vary by training method and model size.
+- *(Optional)* **NVIDIA cuDNN** — Improves training throughput and allows larger batch sizes.
+
+<Note>
+  macOS is only supported via the pip method. CUDA is generally not required and may not be compatible with Apple Silicon GPUs. See [Linux / macOS — pip](/installation/pip-linux) instead.
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Install Python and Git">
+    On Ubuntu 22.04 or later:
+
+    ```bash
+    sudo apt update
+    sudo apt install python3.11 python3.11-venv git
+    ```
+  </Step>
+
+  <Step title="Install CUDA 12.8 Toolkit">
+    Download and install from the [NVIDIA CUDA 12.8 archive](https://developer.nvidia.com/cuda-12-8-0-download-archive?target_os=Linux&target_arch=x86_64) and follow the instructions for your distribution.
+  </Step>
+
+  <Step title="Clone the repository">
+    Clone with the `--recursive` flag to also fetch all required Git submodules:
+
+    ```bash
+    git clone --recursive https://github.com/bmaltais/kohya_ss.git
+    cd kohya_ss
+    ```
+  </Step>
+
+  <Step title="Launch the GUI">
+    Run the launch script:
+
+    ```bash
+    ./gui-uv.sh
+    ```
+
+    On first run, if `uv` is not found the script will prompt you:
+
+    - Press `Y` to let the script install `uv` automatically.
+    - Press `N` to cancel and [install `uv` manually](https://astral.sh/uv) before re-running.
+
+    Once `uv` is available, the script installs all Python dependencies and starts the Gradio server.
+  </Step>
+</Steps>
+
+## Starting the GUI with options
+
+Pass CLI arguments directly to `gui-uv.sh` to control how the server starts:
+
+```bash
+./gui-uv.sh --listen 127.0.0.1 --server_port 7860 --inbrowser --share
+```
+
+For headless servers (no display):
+
+```bash
+./gui-uv.sh --headless --listen 0.0.0.0 --server_port 7860
+```
+
+To run multiple instances on different ports (useful for multi-GPU workflows):
+
+```bash
+nohup ./gui-uv.sh --listen 0.0.0.0 --server_port 7860 --headless > log1.log 2>&1 &
+nohup ./gui-uv.sh --listen 0.0.0.0 --server_port 7861 --headless > log2.log 2>&1 &
+```
+
+## Available CLI options
+
+All flags accepted by `gui-uv.sh` (and `kohya_gui.py` directly):
+
+```text
+  --help                show this help message and exit
+  --config CONFIG       Path to the toml config file for interface defaults
+  --debug               Debug on
+  --listen LISTEN       IP to listen on for connections to Gradio
+  --username USERNAME   Username for authentication
+  --password PASSWORD   Password for authentication
+  --server_port SERVER_PORT
+                        Port to run the server listener on
+  --inbrowser           Open in browser
+  --share               Share the gradio UI
+  --headless            Is the server headless
+  --language LANGUAGE   Set custom language
+  --use-ipex            Use IPEX environment
+  --use-rocm            Use ROCm environment
+  --do_not_use_shell    Enforce not to use shell=True when running external commands
+  --do_not_share        Do not share the gradio UI
+  --requirements REQUIREMENTS
+                        requirements file to use for validation
+  --root_path ROOT_PATH
+                        `root_path` for Gradio to enable reverse proxy support. e.g. /kohya_ss
+  --noverify            Disable requirements verification
+```
+
+## Upgrading
+
+<Steps>
+  <Step title="Pull the latest changes">
+    ```bash
+    git pull
+    ```
+  </Step>
+  <Step title="Re-run the launch script">
+    ```bash
+    ./gui-uv.sh
+    ```
+
+    The script detects any changed dependencies and updates the `uv`-managed environment automatically. No separate setup command is needed.
+  </Step>
+</Steps>
+
+## Install location details
+
+The setup script installs in the current directory when possible. If that directory is not writable, it falls back in order:
+
+1. `/opt/kohya_ss`
+2. `$HOME/kohya_ss`
+3. Current directory (last resort)
+
+To force a specific install path, use:
+
+```bash
+./setup.sh -d /your/custom/path
+```
+
+When running the interactive Accelerate configuration step, the recommended default values are:
+
+- **Machine type:** `This machine`
+- **Compute type:** `None`
+- **All other options:** `No`
